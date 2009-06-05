@@ -10,7 +10,7 @@ import Control.Arrow
 import Control.Monad.Random
 import Control.Monad.State
 import Control.Parallel.Strategies
-import Data.List (foldl', nub, transpose)
+import Data.List (delete, foldl', nub, transpose)
 import Data.Map (Map)
 import Data.Maybe
 import Edge
@@ -26,11 +26,15 @@ data Grid i = Grid {
     updates        :: PriorityQueue Time (i, i)
 } deriving Show
 
+mEdges f g = g { edges = f (edges g) }
+sEdges     = mEdges . const
+speed = 15
+
 instance NFData i => NFData (Grid i) where
     rnf g = rnf (sequenceNumber g, edges g, updates g)
 
 addEdge edge i j = adjustWithDefault Map.empty (Map.insert j edge) i
-simpleEdge       = Edge $ directedEdge 1
+simpleEdge       = Edge $ directedEdge (1 / speed)
 addSimpleEdge    = addEdge simpleEdge
 
 -- we can use PQ.empty because we know no DirectedEdge will start out with a
@@ -38,6 +42,8 @@ addSimpleEdge    = addEdge simpleEdge
 basicGrid pairs = Grid minBound edges_ PQ.empty where
     symmetricPairs = pairs ++ map (snd &&& fst) pairs
     edges_         = foldr (uncurry addSimpleEdge) Map.empty symmetricPairs
+
+emptyGrid = Grid minBound Map.empty PQ.empty
 -- }}}
 -- for debugging {{{
 -- assumptions: only single-step NSEW connections
@@ -50,7 +56,7 @@ basicPPrint t grid | Map.null (edges grid) = ""
     ((minX, minY), (maxX, maxY)) = foldl' (\((minX, minY), (maxX, maxY)) (x, y) -> ((min minX x, min minY y), (max maxX x, max maxY y))) (head nodes, head nodes) nodes -- this line wasn't long enough yet, don't you agree?
 
     intersections is js = map (\i -> any (\j -> not . empty $ intersect i j) js) is
-    intervals        e  = map (uncurry closed) . ap zip tail $ [0, 1/s .. transit e]
+    intervals        e  = map (uncurry closed) . ap zip tail $ [0, 1/(speed * s) .. transit e]
     representation t e  = intersections (intervals e) (coverage t e)
 
     hRep False False = '-'
@@ -116,10 +122,36 @@ update t = do
         fmap (concat tss ++) (update t)
 -- }}}
 -- creating a random tree {{{
-type RandomGrid g i a = StateT (Grid i) (Rand g) a
+type RandomGrid g i a = StateT ([i], Grid i) (Rand g) a
 
-uniform = fromList . flip zip (repeat 1)
-nodeEmpty i = gets (maybe True Map.null . Map.lookup i . edges)
+uniform [] = return Nothing
+uniform xs = fmap Just $ unsafeUniform xs
+unsafeUniform = fromList . flip zip (repeat 1)
+
+nodeEmpty i = maybe True Map.null . Map.lookup i . edges
+link    i j = modify . second . mEdges $ addSimpleEdge i j . addSimpleEdge j i
+bernoulli p = fmap (<p) (getRandomR (0.0, 1.0))
+
+chooseLeaf = gets fst >>= uniform
+chooseEmptyNode is = uniform =<< return . flip filter is . flip nodeEmpty =<< gets snd
+expand neighbors = loop where
+    don't = return ()
+    loop  = do
+        mi <- chooseLeaf
+        case mi of
+            Nothing -> don't
+            Just i  -> do
+                mj <- chooseEmptyNode (neighbors i)
+                maybe don't (link i) mj
+                modify . first . maybe (delete i) (:) $ mj
+                loop
+
+randomRectangular w h = runRandomGrid (expand neighbors) (topHalf w, topHalf h) where
+    topHalf x        = (x + 1) `div` 2
+    nearby x w       = [x + dx | dx <- [-1, 1], 0 < x + dx, x + dx < w + 1]
+    neighbors (x, y) = map (flip (,) y) (nearby x w) ++ map ((,) x) (nearby y h)
+
+runRandomGrid m i = evalRand . fmap snd $ execStateT m ([i], emptyGrid)
 -- }}}
 debug1 = basicGrid [p | [x, y] <- replicateM 2 [0..2], p <- [((x, y), (x+1, y)), ((x, y), (x, y+1))]]
 debug2 = execState (light 0   True  (1, 1)) debug1

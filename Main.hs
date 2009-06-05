@@ -1,5 +1,6 @@
 module Main where
 
+import Control.Monad.Random
 import Control.Monad.State
 import Control.Parallel.Strategies
 import Control.Concurrent
@@ -38,7 +39,7 @@ inputThread rasCompute quit s = inputThread' True where
         case c of
             't' -> do
                 t          <- getTime
-                (ts, grid) <- fmap (runState (light t b (0, 0))) (takeMVar s)
+                (ts, grid) <- fmap (runState (light t b (1, 1))) (takeMVar s)
                 putMVar s grid
                 riseAndShineAtAll rasCompute ts
                 inputThread' (not b)
@@ -52,13 +53,16 @@ outputThread ras s = forever $ do
     t    <- getTime
     putStr (basicPPrint t grid)
 
+initState :: IO SState
+initState = fmap (randomRectangular 8 6) newStdGen
+
 main = do
     hSetBuffering stdin NoBuffering
     hSetEcho      stdin False
     rasCompute <- newMVar ()
     rasOutput  <- newMVar ()
     quit       <- newEmptyMVar
-    s          <- newMVar . basicGrid $ [((x, y), (x+1, y)) | x <- [0..2], y <- [0..2]] ++ [((3, 1), (3, 2)), ((3, 0), (3, 1)), ((0, 0), (0, 1))]
+    s          <- initState >>= newMVar
     threads    <- mapM forkIO [riseAndShineThread rasOutput,
                                inputThread rasCompute quit s,
                                outputThread rasOutput s,
