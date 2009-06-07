@@ -24,14 +24,10 @@ class EdgeClass e where
                                                    -- collect should never return the same "on" signal twice unless there was a corresponding "off" signal in between
                                                    -- note the asymmetry: it is considered acceptable behavior to propogate the same "off" signal twice in succession
                                                    -- (Yes, this means that this is not really a physical model, since an edge participating in a loop will not propogate looped signals.  This is on purpose.)
-    destroy  :: Time   -> State e [Signal]         -- end any pending outputs
 
     -- view
     transit  ::           e -> Time                -- report the end-to-end signal travel time
     coverage :: Time   -> e -> [Interval Time]     -- report which bits of [0, transit[ are currently "on"
-
-    -- default implementations
-    destroy t = fmap (endSignals t) (collect t)
 -- }}}
 -- DirectedEdge {{{
 data DirectedEdge = DirectedEdge {
@@ -83,7 +79,7 @@ instance NFData DirectedEdge where
     rnf de = rnf (statuses de)
 -- }}}
 -- Edge {{{
-data Edge = forall e. (EdgeClass e, Show e, NFData e) => Edge { unEdge :: e }
+data Edge = forall e. (EdgeClass e, Show e, NFData e) => Edge e
 
 edgeLift :: (forall e. (EdgeClass e) => State e a) -> State Edge a
 edgeLift m = State (\(Edge e) -> second Edge (runState m e))
@@ -91,7 +87,6 @@ edgeLift m = State (\(Edge e) -> second Edge (runState m e))
 instance EdgeClass Edge where
     signal  s = edgeLift (signal  s)
     collect t = edgeLift (collect t)
-    destroy t = edgeLift (destroy t)
 
     transit    (Edge e) = transit e
     coverage t (Edge e) = coverage t e
