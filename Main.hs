@@ -66,7 +66,7 @@ outputThread ras s = forever $ do
     putStr (connectionPPrint t p grid)
 
 initState :: IO SState
-initState = fmap (((,) (1, 1)) . connectGrid . randomRectangular 5 8) newStdGen
+initState = fmap (((,) (1, 1)) . connectGrid . randomRectangular 5 4) newStdGen
 
 main = do
     hSetBuffering stdin NoBuffering

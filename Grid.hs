@@ -152,12 +152,13 @@ signalNode avoid node signal = do
     neighbors <- gets (maybe [] (filter (/= avoid) . Map.keys) . Map.lookup node . edges)
     tss <- mapM (\neighbor -> signalLink signal (node, neighbor)) neighbors
     return (concat tss)
+
+neighbors i = gets (fromMaybe [] . fmap Map.keys . Map.lookup i . edges)
 -- }}}
 -- external API {{{
 light t p i = do
     seqNo     <- gets sequenceNumber
-    neighbors <- gets (fmap Map.keys . Map.lookup i . edges)
-    ts        <- forM (fromMaybe [] neighbors) $ \i' -> signalLink ((seqNo, p), t) (i, i')
+    ts        <- neighbors i >>= mapM (\i' -> signalLink ((seqNo, p), t) (i, i'))
     unless p (modify (\g -> g { sequenceNumber = sequenceNumber g + 1 }))
     return (nub $ concat ts)
 
@@ -178,7 +179,6 @@ unsafeUniform = fromList . flip zip (repeat 1)
 
 nodeEmpty i = maybe True Map.null . Map.lookup i . edges
 link    i j = modify . second . mEdges $ addSimpleEdge i j . addSimpleEdge j i
-bernoulli p = fmap (<p) (getRandomR (0.0, 1.0))
 
 chooseLeaf = gets fst >>= uniform
 chooseEmptyNode is = uniform =<< return . flip filter is . flip nodeEmpty =<< gets snd
