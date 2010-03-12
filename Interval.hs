@@ -38,6 +38,7 @@ list2 = mappend `on` fmap return
 -- Beware: this may do strange things with empty intervals.
 i1 `contains` i2 = intersect i1 i2 == i2
 i1 `overlaps` i2 = not . isEmpty $ i1 `intersect` i2
+i  `hasPoint` p  = i `contains` closed p p
 
 intersect (Interval (b1, e1)) (Interval (b2, e2)) =
 	Interval (fmap maximum (list2 b1 b2), fmap minimum (list2 e1 e2))

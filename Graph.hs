@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
-module Graph (Graph, signalGraph, addNode, startEdge, endEdge, queryNode, queryEdge) where
+module Graph (Edge(..), Graph, edges, signalGraph, addNode, addEdge, startEdge, endEdge, queryNode, queryEdge) where
 
 import Empty
 import Interval
@@ -41,8 +41,10 @@ signalGraph' :: (Ord nodeId, Ord edgeId, Ord time, Num time) => (nodeId, Path no
 refresh      :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId,              Ord time, Num time) => nodeId ->                           m ()
 signalGraph  :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId,              Ord time, Num time) => nodeId -> Interval time          -> m ()
 addNode      :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId,             Enum nodeId                    ) =>                                     m nodeId
+addEdge      :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId, Enum edgeId, Ord time, Num time) => nodeId -> nodeId -> time         -> m edgeId
 startEdge    :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId, Enum edgeId, Ord time, Num time) => nodeId -> nodeId -> time -> time -> m edgeId
 endEdge      :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId,              Ord time, Num time) => edgeId ->                   time -> m ()
+startEdge'   :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId, Enum edgeId, Ord time, Num time) => nodeId -> nodeId -> time -> Maybe time -> m edgeId
 
 queryNode :: (Ord nodeId, Ord edgeId, Ord time, Num        time) => nodeId ->         Graph nodeId edgeId time -> [Interval time]
 queryEdge :: (Ord nodeId, Ord edgeId, Ord time, Fractional time) => edgeId -> time -> Graph nodeId edgeId time -> [Interval time]
@@ -87,7 +89,7 @@ addNode = do
 
 lookupM k m f = maybe (return ()) f . Map.lookup k $ m
 
-startEdge edgeSource edgeTarget edgeDelay time = do
+startEdge' edgeSource edgeTarget edgeDelay mTime = do
 	graph@(Graph { nextEdgeId = e, edges = es, nodes = ns }) <- get
 	lookupM edgeSource ns $ \node -> do
 		put graph {
@@ -98,8 +100,11 @@ startEdge edgeSource edgeTarget edgeDelay time = do
 		refresh edgeSource
 	return e
 	where
-	newEdge = Edge { source = edgeSource, target = edgeTarget, delay = edgeDelay, lifetime = openRight time }
+	newEdge = Edge { source = edgeSource, target = edgeTarget, delay = edgeDelay, lifetime = maybe open openRight mTime }
 	newNode edgeId node = node { outgoing = Set.insert edgeId (outgoing node) }
+
+startEdge edgeSource edgeTarget edgeDelay = startEdge' edgeSource edgeTarget edgeDelay . Just
+addEdge   edgeSource edgeTarget edgeDelay = startEdge' edgeSource edgeTarget edgeDelay Nothing
 
 endEdge edgeId time = do
 	graph@(Graph { edges = es }) <- get
