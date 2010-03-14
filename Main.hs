@@ -1,11 +1,7 @@
 import Direction
 import Grid
 
-import Data.Time
 import Graphics.UI.Gtk
-
-arbitraryUTCTime = UTCTime (ModifiedJulianDay 55000) (secondsToDiffTime 0)
-time = fmap (toRational . flip diffUTCTime arbitraryUTCTime) getCurrentTime
 
 main = do
 	initGUI

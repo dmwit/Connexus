@@ -2,7 +2,7 @@
 module Interval (
 	Interval(..),
 	open, openLeft, openRight, closed,
-	isEmpty, contains, overlaps,
+	isEmpty, contains, hasPoint, overlaps,
 	intersect, union,
 	(.+), (.-), (.*), (./), (+.), (-.), (*.), (/.)
 	) where

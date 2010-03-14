@@ -11,6 +11,7 @@ import Data.Array.IO
 import Data.Function
 import Data.IntMap (IntMap)
 import Data.Map (Map)
+import Data.Time
 import Graphics.Rendering.Cairo
 import Graphics.UI.Gtk (drawableGetSize, renderWithDrawable)
 import Graphics.UI.Gtk.Gdk.EventM (eventWindow)
@@ -33,6 +34,9 @@ data Grid = Grid {
 	edgeShape   :: IntMap EdgeType
 	}
 
+arbitraryUTCTime = UTCTime (ModifiedJulianDay 55000) (secondsToDiffTime 0)
+time = fmap (toRational . flip diffUTCTime arbitraryUTCTime) getCurrentTime
+
 -- assumptions: non-empty map, each key is in the first quadrant, and each value is actually a non-empty set
 unsafeStaticGrid :: [(Point, [Direction])] -> IO Grid
 unsafeStaticGrid es = flip evalStateT empty $ do
@@ -51,6 +55,7 @@ unsafeStaticGrid es = flip evalStateT empty $ do
 	shape <- liftIO $ newArray ((0, 0), (w-1, h-1)) []
 	esss  <- forM es $ \(p, ds) -> do
 		n  <- addNode
+		when (p == (0, 0)) $ liftIO time >>= signalGraph n . openRight . (+3)
 		forM ds $ \d -> do
 			border   <- liftIO $ readArray backend (p, d)
 			incoming <- addEdge border n 1
@@ -81,22 +86,41 @@ update grid = eventWindow >>= \dw -> liftIO $ do
 		tlx        = center dww (width  grid)
 		tly        = center dwh (height grid)
 
+	now <- time
 	renderWithDrawable dw $ do
 		translate tlx tly
 		scale length length
 		setLineWidth 0.4
 		setLineCap LineCapRound
-		mapM_ renderEdgeId . Map.keys . edges . graph $ grid
-		stroke
+		mapM_ (renderEdgeId now) . Map.keys . edges . graph $ grid
 
 	return True
 
 	where
 
-	fi i = fromIntegral i + 0.5
-	renderEdge eidIn eidOut (x, y) d = moveTo (fi x) (fi y) >> lineTo (fi x + dx d / 2) (fi y + dy d / 2)
-	renderEdgeId eid = case IntMap.lookup eid (edgeShape grid) of
+	renderEdgeId now eid = case IntMap.lookup eid (edgeShape grid) of
 		Just (Incoming eid') -> case IntMap.lookup eid' (edgeShape grid) of
-			Just (Outgoing p d) -> renderEdge eid eid' p d
+			Just (Outgoing p d) -> renderEdge now eid eid' p d
 			_ -> return ()
 		_ -> return ()
+	renderEdge now eidIn eidOut (x, y) d
+		| lifetime (edges (graph grid) Map.! eidOut) `hasPoint` now = do
+			setSourceRGB 0 0 0
+			moveTo (fr xb) (fr yb)
+			lineTo (fr xe) (fr ye)
+			stroke
+			setSourceRGBA 0 0 1 0.6
+			forM_ (queryEdge eidIn  now (graph grid)) $ \(Interval (Just b, Just e)) ->
+				moveTo (mix xb xe b) (mix yb ye b) >> lineTo (mix xb xe e) (mix yb ye e)
+			forM_ (queryEdge eidOut now (graph grid)) $ \(Interval (Just b, Just e)) ->
+				moveTo (mix xe xb b) (mix ye yb b) >> lineTo (mix xe xb e) (mix ye yb e)
+			stroke
+		| otherwise = return ()
+		where
+		fi i = fromIntegral i + 0.5
+		fr   = fromRational
+		xb = fi x
+		yb = fi y
+		xe = fi x + dx d / 2
+		ye = fi y + dy d / 2
+		mix a b fraction = fr $ a * fraction + b * (1 - fraction)
