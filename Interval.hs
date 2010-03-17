@@ -44,12 +44,13 @@ intersect (Interval (b1, e1)) (Interval (b2, e2)) =
 	Interval (fmap maximum (list2 b1 b2), fmap minimum (list2 e1 e2))
 
 -- Nothing < Just x
-union = coalesce . sortBy (comparing start) . filter (not . isEmpty) where
-	coalesce (i1@(Interval (b1, e1)) : i2@(Interval (_, e2)) : is)
-		-- optimization idea: if e2 is Nothing, can return immediately
-		| i1 `overlaps` i2 = coalesce (Interval (b1, liftM2 max e1 e2) : is)
-		| otherwise        = i1 : coalesce (i2 : is)
-	coalesce is = is
+union = unsafeUnion . sortBy (comparing start) . filter (not . isEmpty) where
+
+unsafeUnion (i1@(Interval (b1, e1)) : i2@(Interval (_, e2)) : is)
+	-- optimization idea: if e2 is Nothing, can return immediately
+	| i1 `overlaps` i2 = unsafeUnion (Interval (b1, liftM2 max e1 e2) : is)
+	| otherwise        = i1 : unsafeUnion (i2 : is)
+unsafeUnion is = is
 
 -- the dot goes on the unusual (i.e. the Interval) side
 infixl 6 .+
