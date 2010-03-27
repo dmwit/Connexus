@@ -4,6 +4,7 @@ import Direction
 import Empty
 import Graph
 import Interval
+import StrokeSet
 
 import Control.Monad.State
 import Control.Monad.Fix
@@ -22,7 +23,7 @@ import qualified Data.Map    as Map
 type Point      = (Int, Int)
 type NodeId     = Int
 type EdgeId     = Int
-data EdgeType   = Incoming Int | Outgoing Point Direction deriving (Eq, Ord, Show, Read)
+data EdgeType   = Incoming | Outgoing deriving (Eq, Ord, Show, Read)
 data Connection = Connection Direction Int Int -- incoming, then outgoing edge id
 
 data Grid = Grid {
@@ -31,7 +32,7 @@ data Grid = Grid {
 	graph  :: Graph NodeId EdgeId Rational,
 	nodeBackend :: IOArray (Point, Direction) NodeId,
 	nodeShape   :: IOArray Point [Connection],
-	edgeShape   :: IntMap EdgeType
+	edgeShape   :: IntMap (EdgeType, (Point, Direction))
 	}
 
 arbitraryUTCTime = UTCTime (ModifiedJulianDay 55000) (secondsToDiffTime 0)
@@ -62,7 +63,7 @@ unsafeStaticGrid es = flip evalStateT empty $ do
 			outgoing <- addEdge n border 1
 			conns    <- liftIO $ readArray shape p
 			liftIO $ writeArray shape p (Connection d incoming outgoing : conns)
-			return [(incoming, Incoming outgoing), (outgoing, Outgoing p d)]
+			return [(incoming, (Incoming, (p, d))), (outgoing, (Outgoing, (p, d)))]
 
 	this <- get
 	return Grid {
@@ -76,6 +77,43 @@ unsafeStaticGrid es = flip evalStateT empty $ do
 	where
 	w = 1 + maximum (map (fst . fst) es)
 	h = 1 + maximum (map (snd . fst) es)
+
+type RStrokeSet = StrokeSet Rational Rational
+gridStrokes, signalStrokes :: Rational -> Grid -> RStrokeSet
+
+gridStrokes = strokeAll (\_ _ p d -> strokeDirection p d 0 1)
+signalStrokes now grid = strokeAll stroke now grid where
+	reverse Incoming = (1 -.)
+	reverse Outgoing = id
+	strokeInterval p d (Interval (Just b, Just e)) = strokeDirection p d b e
+
+	stroke eid edgeType point direction
+		= flip (foldr (strokeInterval point direction . reverse edgeType))
+		. queryEdge eid now
+		. graph
+		$ grid
+
+strokeAll :: (EdgeId -> EdgeType -> Point -> Direction -> RStrokeSet -> RStrokeSet) ->
+             Rational -> Grid -> RStrokeSet
+strokeAll f now grid = foldr stroke empty . Map.assocs . edges . graph $ grid where
+	stroke (i, e) = case (lifetime e `hasPoint` now, IntMap.lookup i $ edgeShape grid) of
+		(True, Just (t, (p, d))) -> f i t p d
+		_ -> id
+
+strokeDirection :: Point -> Direction -> Rational -> Rational -> RStrokeSet -> RStrokeSet
+strokeDirection (x', y') d b' e' = case d of
+	North -> strokeVertical   x (y - e) (y - b)
+	East  -> strokeHorizontal y (x + b) (x + e)
+	South -> strokeVertical   x (y + b) (y + e)
+	West  -> strokeHorizontal y (x - e) (x - b)
+	where
+	[x, y] = map ((+1/2) . fromIntegral) [x', y']
+	[b, e] = map (/2) [b', e']
+
+-- TODO: prettier!
+renderStrokeSetSimple = mapM_ render . head . (++[[]]) . strokes where
+	render ((xb, yb), (xe, ye)) = fr moveTo xb yb >> fr lineTo xe ye
+	fr f = f `on` fromRational
 
 update grid = eventWindow >>= \dw -> liftIO $ do
 	(dww, dwh) <- drawableGetSize dw
@@ -92,35 +130,13 @@ update grid = eventWindow >>= \dw -> liftIO $ do
 		scale length length
 		setLineWidth 0.4
 		setLineCap LineCapRound
-		mapM_ (renderEdgeId now) . Map.keys . edges . graph $ grid
+
+		setSourceRGB 0 0 0
+		renderStrokeSetSimple (gridStrokes now grid)
+		stroke
+
+		setSourceRGB 0 0 0.8
+		renderStrokeSetSimple (signalStrokes now grid)
+		stroke
 
 	return True
-
-	where
-
-	renderEdgeId now eid = case IntMap.lookup eid (edgeShape grid) of
-		Just (Incoming eid') -> case IntMap.lookup eid' (edgeShape grid) of
-			Just (Outgoing p d) -> renderEdge now eid eid' p d
-			_ -> return ()
-		_ -> return ()
-	renderEdge now eidIn eidOut (x, y) d
-		| lifetime (edges (graph grid) Map.! eidOut) `hasPoint` now = do
-			setSourceRGB 0 0 0
-			moveTo (fr xb) (fr yb)
-			lineTo (fr xe) (fr ye)
-			stroke
-			setSourceRGBA 0 0 1 0.6
-			forM_ (queryEdge eidIn  now (graph grid)) $ \(Interval (Just b, Just e)) ->
-				moveTo (mix xb xe b) (mix yb ye b) >> lineTo (mix xb xe e) (mix yb ye e)
-			forM_ (queryEdge eidOut now (graph grid)) $ \(Interval (Just b, Just e)) ->
-				moveTo (mix xe xb b) (mix ye yb b) >> lineTo (mix xe xb e) (mix ye yb e)
-			stroke
-		| otherwise = return ()
-		where
-		fi i = fromIntegral i + 0.5
-		fr   = fromRational
-		xb = fi x
-		yb = fi y
-		xe = fi x + dx d / 2
-		ye = fi y + dy d / 2
-		mix a b fraction = fr $ a * fraction + b * (1 - fraction)

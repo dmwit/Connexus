@@ -16,8 +16,8 @@ import Data.Monoid
 import qualified Data.Map as Map
 
 data StrokeSet h v = StrokeSet {
-	hs :: Map h [[Interval v]],
-	vs :: Map v [[Interval h]]
+	hs :: Map v [[Interval h]],
+	vs :: Map h [[Interval v]]
 	} deriving (Eq, Ord, Show, Read)
 instance Empty (StrokeSet h v) where empty = StrokeSet empty empty
 
@@ -42,14 +42,14 @@ strokeAll is (is':iss) = union (is ++ is') : strokeAll (intersections is is') is
 intersections :: Ord a => [Interval a] -> [Interval a] -> [Interval a]
 intersections ais ais' = union [intersect ai ai' | ai <- ais, ai' <- ais']
 
-strokeHorizontal :: (Ord h, Ord v) => h -> v -> v -> StrokeSet h v -> StrokeSet h v
-strokeVertical   :: (Ord h, Ord v) => v -> h -> h -> StrokeSet h v -> StrokeSet h v
+strokeHorizontal :: (Ord h, Ord v) => v -> h -> h -> StrokeSet h v -> StrokeSet h v
+strokeVertical   :: (Ord h, Ord v) => h -> v -> v -> StrokeSet h v -> StrokeSet h v
 horizontals      :: StrokeSet h v -> [[((h, v), (h, v))]]
 verticals        :: StrokeSet h v -> [[((h, v), (h, v))]]
 strokes          :: StrokeSet a a -> [[((a, a), (a, a))]]
 
-strokeHorizontal h vb ve ss = ss { hs = strokeMap h vb ve (hs ss) }
-strokeVertical   v hb he ss = ss { vs = strokeMap v hb he (vs ss) }
-horizontals = unStrokeMap (\h vb ve -> ((h, vb), (h, ve))) . hs
-verticals   = unStrokeMap (\v hb he -> ((hb, v), (he, v))) . vs
+strokeHorizontal v hb he ss = ss { hs = strokeMap v hb he (hs ss) }
+strokeVertical   h vb ve ss = ss { vs = strokeMap h vb ve (vs ss) }
+horizontals = unStrokeMap (\v hb he -> ((hb, v), (he, v))) . hs
+verticals   = unStrokeMap (\h vb ve -> ((h, vb), (h, ve))) . vs
 strokes gss = zipMonoid [horizontals gss, verticals gss]
