@@ -1,21 +1,19 @@
 module Grid where
 
 import Direction
-import Empty
 import Graph
 import Interval
+import Misc
 import StrokeSet
 
 import Control.Monad.State
 import Control.Monad.Fix
 import Data.Array.IO
+import Data.Default
 import Data.Function
 import Data.IntMap (IntMap)
 import Data.Map (Map)
-import Data.Time
 import Graphics.Rendering.Cairo
-import Graphics.UI.Gtk (drawableGetSize, renderWithDrawable)
-import Graphics.UI.Gtk.Gdk.EventM (eventWindow)
 
 import qualified Data.IntMap as IntMap
 import qualified Data.Map    as Map
@@ -35,12 +33,9 @@ data Grid = Grid {
 	edgeShape   :: IntMap (EdgeType, (Point, Direction))
 	}
 
-arbitraryUTCTime = UTCTime (ModifiedJulianDay 55000) (secondsToDiffTime 0)
-time = fmap (toRational . flip diffUTCTime arbitraryUTCTime) getCurrentTime
-
 -- assumptions: non-empty map, each key is in the first quadrant, and each value is actually a non-empty set
 unsafeStaticGrid :: [(Point, [Direction])] -> IO Grid
-unsafeStaticGrid es = flip evalStateT empty $ do
+unsafeStaticGrid es = flip evalStateT def $ do
 	backend <- liftIO $ newArray (((0, 0), minBound), ((w-1, h-1), maxBound)) maxBound
 	forM_ (range (0, w-1)) $ \x -> addNode >>= liftIO . writeArray backend ((x, 0), North)
 	forM_ (range (0, h-1)) $ \y -> addNode >>= liftIO . writeArray backend ((0, y), West )
@@ -56,7 +51,7 @@ unsafeStaticGrid es = flip evalStateT empty $ do
 	shape <- liftIO $ newArray ((0, 0), (w-1, h-1)) []
 	esss  <- forM es $ \(p, ds) -> do
 		n  <- addNode
-		when (p == (0, 0)) $ liftIO time >>= signalGraph n . openRight . (+3)
+		when (p == (0, 0)) $ time >>= signalGraph n . openRight . (+3)
 		forM ds $ \d -> do
 			border   <- liftIO $ readArray backend (p, d)
 			incoming <- addEdge border n 1
@@ -95,7 +90,7 @@ signalStrokes now grid = strokeAll stroke now grid where
 
 strokeAll :: (EdgeId -> EdgeType -> Point -> Direction -> RStrokeSet -> RStrokeSet) ->
              Rational -> Grid -> RStrokeSet
-strokeAll f now grid = foldr stroke empty . Map.assocs . edges . graph $ grid where
+strokeAll f now grid = foldr stroke def . Map.assocs . edges . graph $ grid where
 	stroke (i, e) = case (lifetime e `hasPoint` now, IntMap.lookup i $ edgeShape grid) of
 		(True, Just (t, (p, d))) -> f i t p d
 		_ -> id
@@ -107,36 +102,30 @@ strokeDirection (x', y') d b' e' = case d of
 	South -> strokeVertical   x (y + b) (y + e)
 	West  -> strokeHorizontal y (x - e) (x - b)
 	where
-	[x, y] = map ((+1/2) . fromIntegral) [x', y']
+	[x, y] = map fromIntegral [x', y']
 	[b, e] = map (/2) [b', e']
 
--- TODO: prettier!
-renderStrokeSetSimple = mapM_ render . head . (++[[]]) . strokes where
-	render ((xb, yb), (xe, ye)) = fr moveTo xb yb >> fr lineTo xe ye
-	fr f = f `on` fromRational
+renderStrokeSet init edge = sequence_ . zipWith renderGroup [0..] . strokes where
+	renderGroup n es = do
+		init n
+		mapM_ (edge n) es
+		stroke
 
-update grid = eventWindow >>= \dw -> liftIO $ do
-	(dww, dwh) <- drawableGetSize dw
-	let
-		lengthInt  = min (dww `div` (1 + width grid)) (dwh `div` (1 + height grid))
-		center a b = fromIntegral $ (a - b * lengthInt) `div` 2
-		length     = max 0.01 (fromIntegral lengthInt)
-		tlx        = center dww (width  grid)
-		tly        = center dwh (height grid)
+fr f = f `on` fromRational
+renderInitGrid 1 = setSourceRGB 0 0 0
+renderInitGrid _ = setSourceRGB 1 0 0
+renderEdgeGrid _ ((xb, yb), (xe, ye)) = fr moveTo xb yb >> fr lineTo xe ye
+renderInitSignal 0 = setSourceRGB 0 0 0.6
+renderInitSignal 1 = setSourceRGB 0 0 1
+renderInitSignal _ = setSourceRGB 1 0 0
+renderEdgeSignal _ ((xb, yb), (xe, ye)) = fr moveTo xb yb >> fr lineTo xe ye -- TODO
 
+update grid = do
 	now <- time
-	renderWithDrawable dw $ do
-		translate tlx tly
-		scale length length
+	return $ do
 		setLineWidth 0.4
 		setLineCap LineCapRound
+		renderStrokeSet renderInitGrid   renderEdgeGrid   (gridStrokes   now grid)
+		renderStrokeSet renderInitSignal renderEdgeSignal (signalStrokes now grid)
 
-		setSourceRGB 0 0 0
-		renderStrokeSetSimple (gridStrokes now grid)
-		stroke
-
-		setSourceRGB 0 0 0.8
-		renderStrokeSetSimple (signalStrokes now grid)
-		stroke
-
-	return True
+stable = fmap fromRational . Graph.stable . graph

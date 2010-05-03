@@ -2,12 +2,10 @@
 module Interval (
 	Interval(..),
 	open, openLeft, openRight, closed,
-	isEmpty, contains, hasPoint, overlaps,
+	isEmpty, isPoint, contains, hasPoint, overlaps,
 	intersect, union,
 	(.+), (.-), (.*), (./), (+.), (-.), (*.), (/.)
 	) where
-
-import Empty
 
 import Control.Monad
 import Data.Function
@@ -31,6 +29,9 @@ closed    b e = Interval (Just  b, Just  e)
 
 isEmpty (Interval (Just b, Just e)) = b > e
 isEmpty _ = False
+
+isPoint (Interval (Just b, Just e)) = b == e
+isPoint _ = False
 
 list2 :: Maybe a -> Maybe a -> Maybe [a]
 list2 = mappend `on` fmap return

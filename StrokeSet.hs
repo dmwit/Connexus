@@ -5,10 +5,10 @@ module StrokeSet (
 	horizontals, verticals, strokes
 ) where
 
-import Empty
 import Interval
 
 import Data.List   (transpose)
+import Data.Default
 import Data.Map    (Map)
 import Data.Maybe
 import Data.Monoid
@@ -19,7 +19,7 @@ data StrokeSet h v = StrokeSet {
 	hs :: Map v [[Interval h]],
 	vs :: Map h [[Interval v]]
 	} deriving (Eq, Ord, Show, Read)
-instance Empty (StrokeSet h v) where empty = StrokeSet empty empty
+instance Default (StrokeSet h v) where def = StrokeSet def def
 
 zipMonoid   :: Monoid m => [[m]] -> [m]
 unStrokeSet :: (a -> a -> b) -> [[Interval a]] -> [[b]]
@@ -40,7 +40,7 @@ strokeAll is (is':iss) = union (is ++ is') : strokeAll (intersections is is') is
 -- optimization idea: we know ais/ais' are pre-sorted, so can get O(m+n)
 -- implementation rather than O(mn) by merging rather than producting
 intersections :: Ord a => [Interval a] -> [Interval a] -> [Interval a]
-intersections ais ais' = union [intersect ai ai' | ai <- ais, ai' <- ais']
+intersections ais ais' = filter (not .isPoint) $ union [intersect ai ai' | ai <- ais, ai' <- ais']
 
 strokeHorizontal :: (Ord h, Ord v) => v -> h -> h -> StrokeSet h v -> StrokeSet h v
 strokeVertical   :: (Ord h, Ord v) => h -> v -> v -> StrokeSet h v -> StrokeSet h v

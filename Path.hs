@@ -18,7 +18,7 @@ listPath   :: Path nodeId edgeId -> [(edgeId, nodeId)]
 
 updateHistory :: (Ord nodeId, Ord edgeId) =>
 	Path nodeId edgeId -> Interval time -> History nodeId edgeId time -> History nodeId edgeId time
-listHistory   :: (Ord nodeId, Ord edgeId) =>
+listHistory   ::
 	History nodeId edgeId time -> [(Path nodeId edgeId, Interval time)]
 
 appendPath node edge path = (edge, node) : path

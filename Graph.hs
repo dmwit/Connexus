@@ -1,12 +1,13 @@
 {-# LANGUAGE FlexibleContexts #-}
-module Graph (Edge(..), Graph, edges, signalGraph, addNode, addEdge, startEdge, endEdge, queryNode, queryEdge) where
+module Graph (Edge(..), Graph, edges, signalGraph, addNode, addEdge, startEdge, endEdge, queryNode, queryEdge, stable) where
 
-import Empty
 import Interval
 import Path
 
 import Control.Monad.State
+import Data.Default
 import Data.Map (Map)
+import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -30,9 +31,9 @@ data Graph nodeId edgeId time = Graph {
 	nodes       :: Map nodeId (Node nodeId edgeId time)
 	} deriving (Eq, Ord, Show, Read)
 
-instance Empty (Node nodeId edgeId time) where empty = Node empty empty
-instance (Bounded nodeId, Bounded edgeId) => Empty (Graph nodeId edgeId time) where
-	empty = Graph minBound minBound empty empty
+instance Default (Node nodeId edgeId time) where def = Node def def
+instance (Bounded nodeId, Bounded edgeId) => Default (Graph nodeId edgeId time) where
+	def = Graph minBound minBound def def
 
 signalNode   :: (Ord nodeId, Ord edgeId)                     =>          Path nodeId edgeId -> Interval time  -> Node  nodeId edgeId time -> ([edgeId], Node  nodeId edgeId time)
 signalEdge   :: (Eq  nodeId,             Ord time, Num time) =>          Path nodeId edgeId -> Interval time  -> Edge  nodeId        time -> ( nodeId , Interval            time)
@@ -48,6 +49,13 @@ startEdge'   :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId
 
 queryNode :: (Ord nodeId, Ord edgeId, Ord time, Num        time) => nodeId ->         Graph nodeId edgeId time -> [Interval time]
 queryEdge :: (Ord nodeId, Ord edgeId, Ord time, Fractional time) => edgeId -> time -> Graph nodeId edgeId time -> [Interval time]
+
+maybeMaximum   :: Ord time => [Maybe time] -> Maybe time
+stableInterval :: Ord time => Interval               time -> Maybe time
+stableEdge     :: Ord time => Edge     nodeId        time -> Maybe time
+stableHistory  :: Ord time => History  nodeId edgeId time -> Maybe time
+stableNode     :: Ord time => Node     nodeId edgeId time -> Maybe time
+stable         :: Ord time => Graph    nodeId edgeId time -> Maybe time
 
 signalNode path signal node = (edges, newNode) where
 	edges    = Set.toList (outgoing node)
@@ -80,11 +88,11 @@ refresh nodeId = maybe (return ()) signalRefreshAll . Map.lookup nodeId =<< gets
 	signalRefresh (path, signal) = modify . signalGraph' $ (nodeId, path, signal)
 	signalRefreshAll             = mapM_ signalRefresh . listHistory . history
 
-signalGraph nodeId signal = modify $ signalGraph' (nodeId, empty, signal)
+signalGraph nodeId signal = modify $ signalGraph' (nodeId, def, signal)
 
 addNode = do
 	graph@(Graph { nextNodeId =      n, nodes = ns }) <- get
-	put    graph { nextNodeId = succ n, nodes = Map.insert n empty ns }
+	put    graph { nextNodeId = succ n, nodes = Map.insert n def ns }
 	return n
 
 lookupM k m f = maybe (return ()) f . Map.lookup k $ m
@@ -121,3 +129,15 @@ queryEdge edgeId time graph = union $ do
 	(path, signal) <- listHistory (history node)
 	guard . not $ lastPath (target edge) path -- don't send signals back to the node they came from instantly
 	return . intersect (closed 0 1) $ (time -. intersect (lifetime edge) signal) ./ delay edge
+
+maybeMaximum xs = case catMaybes xs of
+	[] -> Nothing
+	xs -> Just (maximum xs)
+
+stableInterval (Interval (b, e)) = maybeMaximum [b, e]
+stableEdge    = stableInterval . lifetime
+stableHistory = maybeMaximum . map (stableInterval . snd) . listHistory
+stableNode    = stableHistory . history
+stable      g = maybeMaximum (stableEdges ++ stableNodes) where
+	stableEdges = map stableEdge . Map.elems . edges $ g
+	stableNodes = map stableNode . Map.elems . nodes $ g
