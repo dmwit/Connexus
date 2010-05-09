@@ -66,8 +66,9 @@ freezeAnimation _ Stationary = 0
 freezeAnimation t' as = freeze' as where
 	d = duration as
 	s = startTime as
-	t = min (t' - s) d -- TODO: also have a case for when the given time is before the animation started
-	interpolate t = t + pi / d * sin (t * d / pi)
+	t = clip 0 d (t' - s)
+	clip m n = max m . min n
+	interpolate t = t + d / pi * sin (t * pi / d)
 	freeze' (Thrown { startVelocity = v }) = v / 2 * interpolate t
 	freeze' (Goal   { distance      = m }) = m * interpolate t / interpolate d
 
