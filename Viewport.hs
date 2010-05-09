@@ -242,7 +242,6 @@ reposition da posRef old new = do
 		widgetQueueDraw da
 -- }}}
 -- }}}
--- TODO: standardize on GTK's time system: TimeStamp
 -- TODO: fix markup in documentation of Graphics.UI.Gtk.Abstract.Widget.motionNotifyEvent
 --       figure out what "This may be @Nothing@" means in documentation of G.U.G.A.W.widgetGetDrawWindow
 --       fix typo in GUGAW.widgetDelEvents ("disconected" -> "disconnected")
