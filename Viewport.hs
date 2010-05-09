@@ -212,17 +212,20 @@ releaseViewport da panRef posRef stableRef v = do
 				dx  = d (fst . pos) / length
 				dy  = d (snd . pos) / length
 				dt  = fromIntegral (d locationTime) / 1000
-			-- TODO: throwing seems to have a bug: after the throw, the position is out of synch
 			modifyIORef posRef . onCenterX $ throw now (-dx / dt)
 			modifyIORef posRef . onCenterY $ throw now (-dy / dt)
+			-- make sure we're firing off update requests
+			stable <- newIORef Already
+			setStableTime da (delay v) stable (ExactTime (now + dur))
 		_ -> do
 			eventCoordinates >>= worldFromScreen now posRef >>= liftIO . uncurry (click v b)
 			liftIO $ stabilizationTime v >>= setStableTime da (delay v) stableRef
 	return True
 	where
+	dur = 0.6
 	throw now sv dim = Dimension {
 		dimension = freeze now dim,
-		animation = Thrown { startTime = now, duration = 0.2, startVelocity = sv }
+		animation = Thrown { startTime = now, duration = dur, startVelocity = sv }
 		}
 
 reposition da posRef old new = do
