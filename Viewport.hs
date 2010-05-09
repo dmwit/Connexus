@@ -163,7 +163,7 @@ exposeViewport posRef draw = do
 		drawing
 	return True
 -- }}}
--- zooming and panning {{{
+-- zooming {{{
 zoomViewport :: DrawingArea -> IORef Position -> Int -> EventM EScroll Bool
 zoomViewport da posRef delay = tryEvent $ do
 	sd <- eventScrollDirection
@@ -178,7 +178,8 @@ zoomViewport da posRef delay = tryEvent $ do
 	zoom = (onZoomRef posRef .) . multiply dur . zoomFactor
 	zoomFactor ScrollUp   = 0.5
 	zoomFactor ScrollDown = 2
-
+-- }}}
+-- panning {{{
 -- pointerLocation :: (HasTime a, HasCoordinates a) => EventM a PointerLocation
 pointerLocation = liftM2 PointerLocation eventTime eventCoordinates
 
