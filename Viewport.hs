@@ -51,6 +51,7 @@ instance Default Viewport       where def = Viewport def def def def 15 -- ~60 f
 -- }}}
 -- }}}
 -- animation {{{
+-- pure computations {{{
 onCenterX, onCenterY, onWidth, onHeight :: (Dimension -> Dimension) -> (Position -> Position)
 onCenterX f p = p { centerX = f (centerX p) }
 onCenterY f p = p { centerY = f (centerY p) }
@@ -96,6 +97,35 @@ pause now dim = Dimension {
 	animation = Stationary
 	}
 -- }}}
+-- converting between screen and world coordinates {{{
+type Coord = (Double, Double)
+data Conversion = Conversion {
+	worldFromScreen    :: Coord -> Coord,
+	screenFromWorld    :: Coord -> Coord,
+	pixelsPerWorldUnit :: Double
+	}
+
+conversionPure :: (Int, Int) -> Double -> Position -> Conversion
+conversionPure (dww', dwh') now pos = Conversion wfs sfw ppwu where
+	[cx, cy, w, h] = map (freeze now) . sequence [centerX, centerY, width, height] $ pos
+	[dww, dwh]     = map (fromIntegral . max 1) [dww', dwh']
+	ppwu           = min (dww / w) (dwh / h)
+	both f (x, y)  = (f dww cx x, f dwh cy y)
+	wfs            = both wfsSingle
+	sfw            = both sfwSingle
+	wfsSingle screenLength centerWorld screenCoordinate = centerWorld      + (screenCoordinate - screenLength / 2) / ppwu
+	sfwSingle screenLength centerWorld worldCoordinate  = screenLength / 2 + (worldCoordinate  - centerWorld     ) * ppwu
+
+conversionAt :: Double -> IORef Position -> EventM a Conversion
+conversionAt now posRef = conversionPure
+	`fmap` (eventWindow >>= liftIO . drawableGetSize)
+	`ap`   return now
+	`ap`   liftIO (readIORef posRef)
+
+conversion :: IORef Position -> EventM a Conversion
+conversion posRef = time >>= flip conversionAt posRef
+-- }}}
+-- }}}
 -- event handling {{{
 -- timeouts {{{
 stableTimeout :: DrawingArea -> IORef Stabilization -> IO Bool
@@ -121,23 +151,16 @@ setStableTime da delay stableRef stable = do
 -- expose {{{
 exposeViewport :: IORef Position -> IO (Render a) -> EventM b Bool
 exposeViewport posRef draw = do
-	dw <- eventWindow
-	liftIO $ do
-		Position { centerX = cx', centerY = cy', width = pw', height = ph' } <- readIORef posRef
-		(dww', dwh') <- drawableGetSize dw
-		drawing      <- draw
-		now          <- time
-		let
-			[cx, cy, pw, ph] = map (freeze now) [cx', cy', pw', ph']
-			[dww, dwh]       = map (fromIntegral . max 1) [dww', dwh']
-			length = min (dww / pw) (dwh / ph)
-			tlx    = dww / 2 - cx * length
-			tly    = dwh / 2 - cy * length
-
-		renderWithDrawable dw $ do
-			translate tlx tly
-			scale length length
-			drawing
+	dw      <- eventWindow
+	con     <- conversion posRef
+	drawing <- liftIO draw
+	let
+		length     = pixelsPerWorldUnit con
+		(tlx, tly) = worldFromScreen con (0, 0)
+	liftIO . renderWithDrawable dw $ do
+		scale length length
+		translate (-tlx) (-tly)
+		drawing
 	return True
 -- }}}
 -- zooming and panning {{{
@@ -158,21 +181,6 @@ zoomViewport da posRef delay = tryEvent $ do
 
 -- pointerLocation :: (HasTime a, HasCoordinates a) => EventM a PointerLocation
 pointerLocation = liftM2 PointerLocation eventTime eventCoordinates
-
--- TODO: unify with exposeViewport
-worldFromScreen :: Double -> IORef Position -> (Double, Double) -> EventM a (Double, Double)
-worldFromScreen now posRef (x, y) = do
-	dw <- eventWindow
-	liftIO $ do
-		Position { centerX = cx', centerY = cy', width = pw', height = ph' } <- readIORef posRef
-		(dww', dwh') <- drawableGetSize dw
-		let
-			[cx, cy, pw, ph] = map (freeze now) [cx', cy', pw', ph']
-			[dww, dwh]       = map (fromIntegral . max 1) [dww', dwh']
-			length = min (dww / pw) (dwh / ph)
-			worldX = cx + (x - dww / 2) / length
-			worldY = cy + (y - dwh / 2) / length
-		return (worldX, worldY)
 
 clickViewport   ::                IORef Drag -> IORef Position                                    -> EventM EButton Bool
 dragViewport    :: DrawingArea -> IORef Drag -> IORef Position                                    -> EventM EMotion Bool
@@ -197,21 +205,15 @@ dragViewport da panRef posRef = do
 releaseViewport da panRef posRef stableRef v = do
 	b   <- eventButton
 	ts  <- eventTime
-	dw  <- eventWindow
 	now <- time
 	pan <- liftIO $ readIORef panRef
+	con <- conversionAt now posRef
 	case (b, pan) of
 		(LeftButton, Motion {}) -> when (ts == locationTime (current pan)) . liftIO $ do
-			-- TODO: unify with exposeViewport / abstract out
-			Position { width = pw', height = ph' } <- readIORef posRef
-			(dww', dwh') <- drawableGetSize dw
 			let
-				[pw , ph ] = map (freeze now) [pw', ph']
-				[dww, dwh] = map (fromIntegral . max 1) [dww', dwh']
-				length = min (dww / pw) (dwh / ph)
 				d g = g (current pan) - g (previous pan)
-				dx  = d (fst . pos) / length
-				dy  = d (snd . pos) / length
+				dx  = d (fst . pos) / pixelsPerWorldUnit con
+				dy  = d (snd . pos) / pixelsPerWorldUnit con
 				dt  = fromIntegral (d locationTime) / 1000
 			modifyIORef posRef . onCenterX $ throw now (-dx / dt)
 			modifyIORef posRef . onCenterY $ throw now (-dy / dt)
@@ -219,7 +221,7 @@ releaseViewport da panRef posRef stableRef v = do
 			stable <- newIORef Already
 			setStableTime da (delay v) stable (ExactTime (now + dur))
 		_ -> do
-			eventCoordinates >>= worldFromScreen now posRef >>= liftIO . uncurry (click v b)
+			eventCoordinates >>= liftIO . uncurry (click v b) . worldFromScreen con
 			liftIO $ stabilizationTime v >>= setStableTime da (delay v) stableRef
 	return True
 	where
@@ -230,16 +232,15 @@ releaseViewport da panRef posRef stableRef v = do
 		}
 
 reposition da posRef old new = do
-	now          <- time
-	(oldX, oldY) <- worldFromScreen now posRef old
-	(newX, newY) <- worldFromScreen now posRef new
-	liftIO $ do
-		pos <- readIORef posRef
-		writeIORef posRef pos {
-			centerX = Dimension { dimension = (dimension . centerX) pos + oldX - newX, animation = Stationary },
-			centerY = Dimension { dimension = (dimension . centerY) pos + oldY - newY, animation = Stationary }
-			}
-		widgetQueueDraw da
+	con <- conversion posRef
+	let
+		(oldX, oldY) = worldFromScreen con old
+		(newX, newY) = worldFromScreen con new
+	liftIO . modifyIORef posRef $ \pos -> pos {
+		centerX = Dimension { dimension = (dimension . centerX) pos + oldX - newX, animation = Stationary },
+		centerY = Dimension { dimension = (dimension . centerY) pos + oldY - newY, animation = Stationary }
+		}
+	liftIO $ widgetQueueDraw da
 -- }}}
 -- }}}
 -- TODO: fix markup in documentation of Graphics.UI.Gtk.Abstract.Widget.motionNotifyEvent
