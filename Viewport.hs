@@ -188,8 +188,8 @@ dragViewport    :: DrawingArea -> IORef Drag -> IORef Position                  
 releaseViewport :: DrawingArea -> IORef Drag -> IORef Position -> IORef Stabilization -> Viewport -> EventM EButton Bool
 
 clickViewport panRef posRef = tryEvent $ do
-	LeftButton <- eventButton
-	loc        <- pointerLocation
+	MiddleButton <- eventButton
+	loc          <- pointerLocation
 	liftIO $ do
 		now <- time
 		pos <- readIORef posRef
@@ -210,7 +210,7 @@ releaseViewport da panRef posRef stableRef v = do
 	pan <- liftIO $ readIORef panRef
 	con <- conversionAt now posRef
 	case (b, pan) of
-		(LeftButton, Motion {}) -> when (ts == locationTime (current pan)) . liftIO $ do
+		(MiddleButton, Motion {}) -> when (ts == locationTime (current pan)) . liftIO $ do
 			let
 				d g = g (current pan) - g (previous pan)
 				dx  = d (fst . pos) / pixelsPerWorldUnit con
@@ -254,7 +254,7 @@ viewportNew v = do
 	panRef    <- newIORef (error "The impossible happened: a drag or button release happened before a button was pressed!")
 	stableRef <- newIORef Already
 	stabilizationTime v >>= setStableTime da (delay v) stableRef
-	widgetAddEvents da [Button1MotionMask]
+	widgetAddEvents da [Button2MotionMask]
 	on da exposeEvent        $ exposeViewport     posRef (draw  v)
 	on da scrollEvent        $ zoomViewport    da posRef (delay v)
 	on da buttonPressEvent   $ clickViewport      panRef posRef

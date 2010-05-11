@@ -1,17 +1,37 @@
 import Direction
-import Grid (stable, unsafeStaticGrid, update)
+import Grid (Grid, rotate, stable, unsafeStaticGrid, update)
+import Misc
 import Viewport
 
+import Control.Monad
+import Control.Monad.Reader
 import Data.Default
+import Data.IORef
 import Graphics.UI.Gtk hiding (Viewport, viewportNew)
+import Graphics.UI.Gtk.Gdk.EventM (MouseButton(..))
 
+clickGrid gridRef b x y = ioStateT go gridRef where
+	go       = rotate rotation (round x, round y)
+	rotation = case b of
+		LeftButton  -> counterclockwise
+		RightButton -> clockwise
+		_           -> id
+
+testGraph = [((0, 0), [South, East]), ((1, 0), [West, South, East]), ((2, 0), [West]), ((0, 1), [North, East]), ((1, 1), [East, North, West]), ((2, 1), [West])]
+
+-- TODO: the performance is miserable after several rotations, even with such a
+-- tiny graph! find out why
 main = do
 	initGUI
-	window <- windowNew
-	grid   <- unsafeStaticGrid [((0, 0), [South, East]), ((1, 0), [West, South, East]), ((2, 0), [West]), ((0, 1), [North, East]), ((1, 1), [East, North, West]), ((2, 1), [West])]
-	da     <- viewportNew def {
-		stabilizationTime = return . maybe Already ExactTime . stable $ grid,
-		draw     = update grid,
+	window  <- windowNew
+	grid    <- unsafeStaticGrid testGraph
+	gridRef <- newIORef grid
+	da      <- viewportNew def {
+		-- TODO: there's a bug with stability somewhere; the viewport doesn't
+		-- update for long enough
+		stabilizationTime = liftM (maybe Already ExactTime . stable) (readIORef gridRef),
+		draw     = readIORef gridRef >>= update,
+		click    = clickGrid gridRef,
 		position = Position {
 			centerX = def { dimension = 1 }, centerY = def { dimension = 0.5 },
 			width   = def { dimension = 3 }, height  = def { dimension = 2   }

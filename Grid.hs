@@ -1,3 +1,5 @@
+-- boilerplate {{{
+{-# LANGUAGE FlexibleContexts #-}
 module Grid where
 
 import Direction
@@ -8,63 +10,75 @@ import StrokeSet
 
 import Control.Monad.State
 import Control.Monad.Fix
+import Data.Array
 import Data.Array.IO
 import Data.Default
 import Data.Function
 import Data.IntMap (IntMap)
+import Data.List
 import Data.Map (Map)
 import Graphics.Rendering.Cairo
 
 import qualified Data.IntMap as IntMap
 import qualified Data.Map    as Map
-
+-- }}}
+-- types {{{
 type Point      = (Int, Int)
 type NodeId     = Int
 type EdgeId     = Int
 data EdgeType   = Incoming | Outgoing deriving (Eq, Ord, Show, Read)
-data Connection = Connection Direction Int Int -- incoming, then outgoing edge id
+data Connection = Connection {
+	direction :: Direction,
+	incoming, outgoing :: EdgeId
+	} deriving (Eq, Ord, Show, Read)
 
 data Grid = Grid {
 	width  :: Int,
 	height :: Int,
 	graph  :: Graph NodeId EdgeId Rational,
+	points :: Array Point NodeId,
 	nodeBackend :: IOArray (Point, Direction) NodeId,
 	nodeShape   :: IOArray Point [Connection],
 	edgeShape   :: IntMap (EdgeType, (Point, Direction))
 	}
-
+-- }}}
+defaultDelay = 1
+-- creating {{{
 -- assumptions: non-empty map, each key is in the first quadrant, and each value is actually a non-empty set
 unsafeStaticGrid :: [(Point, [Direction])] -> IO Grid
 unsafeStaticGrid es = flip evalStateT def $ do
-	backend <- liftIO $ newArray (((0, 0), minBound), ((w-1, h-1), maxBound)) maxBound
-	forM_ (range (0, w-1)) $ \x -> addNode >>= liftIO . writeArray backend ((x, 0), North)
-	forM_ (range (0, h-1)) $ \y -> addNode >>= liftIO . writeArray backend ((0, y), West )
+	backend <- newArray (((0, 0), minBound), ((w-1, h-1), maxBound)) maxBound
+	nodeIds <- newArray ((0, 0), (w-1, h-1)) maxBound
+	forM_ (range (0, w-1)) $ \x -> addNode >>= writeArray backend ((x, 0), North)
+	forM_ (range (0, h-1)) $ \y -> addNode >>= writeArray backend ((0, y), West )
 	forM_ (range ((0, 0), (w-1, h-1))) $ \(x, y) -> do
 		east  <- addNode
 		south <- addNode
-		liftIO $ do
-			writeArray backend ((x, y), East ) east
-			writeArray backend ((x, y), South) south
-			when (x+1 < w) (writeArray backend ((x+1, y), West ) east )
-			when (y+1 < h) (writeArray backend ((x, y+1), North) south)
+		writeArray backend ((x, y), East ) east
+		writeArray backend ((x, y), South) south
+		when (x+1 < w) (writeArray backend ((x+1, y), West ) east )
+		when (y+1 < h) (writeArray backend ((x, y+1), North) south)
 
-	shape <- liftIO $ newArray ((0, 0), (w-1, h-1)) []
+	shape <- newArray ((0, 0), (w-1, h-1)) []
 	esss  <- forM es $ \(p, ds) -> do
 		n  <- addNode
+		writeArray nodeIds p n
 		when (p == (0, 0)) $ time >>= signalGraph n . openRight . (+3)
 		forM ds $ \d -> do
-			border   <- liftIO $ readArray backend (p, d)
-			incoming <- addEdge border n 1
-			outgoing <- addEdge n border 1
-			conns    <- liftIO $ readArray shape p
-			liftIO $ writeArray shape p (Connection d incoming outgoing : conns)
+			border   <- readArray backend (p, d)
+			incoming <- addEdge border n defaultDelay
+			outgoing <- addEdge n border defaultDelay
+			conns    <- readArray shape p
+			writeArray shape p (Connection d incoming outgoing : conns)
 			return [(incoming, (Incoming, (p, d))), (outgoing, (Outgoing, (p, d)))]
 
+	ps   <- unsafeFreeze (nodeIds :: IOArray Point NodeId)
 	this <- get
 	return Grid {
 		width  = w,
 		height = h,
 		graph  = this,
+		points = ps,
 		nodeBackend = backend,
 		nodeShape   = shape,
 		edgeShape   = IntMap.fromList . concat . concat $ esss
@@ -72,7 +86,8 @@ unsafeStaticGrid es = flip evalStateT def $ do
 	where
 	w = 1 + maximum (map (fst . fst) es)
 	h = 1 + maximum (map (snd . fst) es)
-
+-- }}}
+-- rendering {{{
 type RStrokeSet = StrokeSet Rational Rational
 gridStrokes, signalStrokes :: Rational -> Grid -> RStrokeSet
 
@@ -88,6 +103,8 @@ signalStrokes now grid = strokeAll stroke now grid where
 		. graph
 		$ grid
 
+-- optimization idea: only iterate over the edgeShape, rather than all edges in
+-- the graph (since we only draw edges in the edgeShape anyway)
 strokeAll :: (EdgeId -> EdgeType -> Point -> Direction -> RStrokeSet -> RStrokeSet) ->
              Rational -> Grid -> RStrokeSet
 strokeAll f now grid = foldr stroke def . Map.assocs . edges . graph $ grid where
@@ -129,3 +146,49 @@ update grid = do
 		renderStrokeSet renderInitSignal renderEdgeSignal (signalStrokes now grid)
 
 stable = fmap fromRational . Graph.stable . graph
+-- }}}
+-- modifying {{{
+onGraph :: MonadState Grid m => State (Graph NodeId EdgeId Rational) a -> m a
+onGraph m = do
+	grid <- get
+	let (a, graph') = runState m (graph grid)
+	put grid { graph = graph' }
+	return a
+
+-- TODO: break up from being a monolithic function
+rotate :: (MonadIO m, MonadState Grid m, MArray IOArray [Connection] m, MArray IOArray NodeId m) =>
+          (Direction -> Direction) -> Point -> m ()
+rotate rotation pos = do
+	nodes  <- gets nodeShape
+	bounds <- getBounds nodes
+	when (inRange bounds pos) $ do
+		now           <- time
+		connections   <- readArray nodes pos
+		let [k, f, e] =  sequence [keep, fix, end] connections
+		    fds       =  map (rotation . direction) f
+		nodeCenterId  <- gets ((!pos) . points)
+		nodeIds       <- mapM nodeIdFor fds
+
+		(incoming, outgoing) <- onGraph $ do
+			mapM_ (flip endEdge now . incoming) e
+			mapM_ (flip endEdge now . outgoing) e
+			incoming <- mapM (\nodeId -> startEdge nodeId nodeCenterId defaultDelay now) nodeIds
+			outgoing <- mapM (\nodeId -> startEdge nodeCenterId nodeId defaultDelay now) nodeIds
+			return (incoming, outgoing)
+		
+		oldEdgeShape <- gets edgeShape
+		modify (\grid -> grid { edgeShape
+			= updateEdgeShape Incoming incoming fds
+			. updateEdgeShape Outgoing outgoing fds
+			$ oldEdgeShape
+			})
+
+		writeArray nodes pos (k ++ zipWith3 Connection fds incoming outgoing)
+	where
+	isRotationOf c c' = direction c == rotation (direction c')
+	keep = (\cs c ->      any (c `isRotationOf`) cs ) >>= filter
+	fix  = (\cs c -> not (any (`isRotationOf` c) cs)) >>= filter
+	end  = (\cs c -> not (any (c `isRotationOf`) cs)) >>= filter
+	nodeIdFor d = gets nodeBackend >>= \b -> readArray b (pos, d)
+	updateEdgeShape t ids ds = flip (foldr (\(n, d) -> IntMap.insert n (t, (pos, d)))) (zip ids ds)
+-- }}}
