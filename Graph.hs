@@ -50,12 +50,12 @@ startEdge'   :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId
 queryNode :: (Ord nodeId, Ord edgeId, Ord time, Num        time) => nodeId ->         Graph nodeId edgeId time -> [Interval time]
 queryEdge :: (Ord nodeId, Ord edgeId, Ord time, Fractional time) => edgeId -> time -> Graph nodeId edgeId time -> [Interval time]
 
-maybeMaximum   :: Ord time => [Maybe time] -> Maybe time
-stableInterval :: Ord time => Interval               time -> Maybe time
-stableEdge     :: Ord time => Edge     nodeId        time -> Maybe time
-stableHistory  :: Ord time => History  nodeId edgeId time -> Maybe time
-stableNode     :: Ord time => Node     nodeId edgeId time -> Maybe time
-stable         :: Ord time => Graph    nodeId edgeId time -> Maybe time
+maybeMaximum   ::  Ord time            => [Maybe time]                -> Maybe time
+stableInterval ::  Ord time            => Interval               time -> Maybe time
+stableEdge     ::  Ord time            => Edge     nodeId        time -> Maybe time
+stableHistory  ::  Ord time            => History  nodeId edgeId time -> Maybe time
+stableNode     ::  Ord time            => Node     nodeId edgeId time -> Maybe time
+stable         :: (Ord time, Num time) => Graph    nodeId edgeId time -> Maybe time
 
 signalNode path signal node = (edges, newNode) where
 	edges    = Set.toList (outgoing node)
@@ -135,6 +135,13 @@ stableInterval (Interval (b, e)) = maybeMaximum [b, e]
 stableEdge    = stableInterval . lifetime
 stableHistory = maybeMaximum . map (stableInterval . snd) . listHistory
 stableNode    = stableHistory . history
-stable      g = maybeMaximum (stableEdges ++ stableNodes) where -- TODO: the bug is here; we need to add the maximal delay of the outgoing edges from a node to its stabilization time (or something more conservative and efficient would be fine)
+-- even though all the nodes may have stabilized, the entire graph may not have
+-- stabilized yet if there's still a signal traveling on its last leg in a
+-- cycle; to account for this, simply conservatively delay the stable time of
+-- the nodes by the maximal delay of any edge in the graph
+stable      g = maybeMaximum (stableEdges ++ extraDelay stableNodes) where
 	stableEdges = map stableEdge . Map.elems . edges $ g
 	stableNodes = map stableNode . Map.elems . nodes $ g
+	extraDelay  = case map delay . Map.elems . edges $ g of
+		[] -> id
+		xs -> map (fmap (maximum xs +))

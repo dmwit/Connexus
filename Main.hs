@@ -30,8 +30,6 @@ main = do
 	grid    <- unsafeStaticGrid testGraph
 	gridRef <- newIORef grid
 	da      <- viewportNew def {
-		-- TODO: there's a bug with stability somewhere; the viewport doesn't
-		-- update for long enough
 		stabilizationTime = liftM (maybe Already ExactTime . stable) (readIORef gridRef),
 		draw     = readIORef gridRef >>= update,
 		click    = clickGrid gridRef,
