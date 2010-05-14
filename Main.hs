@@ -20,7 +20,9 @@ clickGrid gridRef b x y = ioStateT go gridRef where
 testGraph = [((0, 0), [South, East]), ((1, 0), [West, South, East]), ((2, 0), [West]), ((0, 1), [North, East]), ((1, 1), [East, North, West]), ((2, 1), [West])]
 
 -- TODO: the performance is miserable after several rotations, even with such a
--- tiny graph! find out why
+-- tiny graph! figure out how to fix it; for example, maybe add a separate way
+-- to garbage collect edges (as distinct from ending their life) and garbage
+-- collect the n-th oldest edges deleted via rotation
 main = do
 	initGUI
 	window  <- windowNew

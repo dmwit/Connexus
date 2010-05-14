@@ -1,6 +1,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 module Interval (
-	Interval(..),
+	Interval(..), start, end,
 	open, openLeft, openRight, closed,
 	isEmpty, isPoint, contains, hasPoint, overlaps,
 	intersect, union,
@@ -33,16 +33,18 @@ isEmpty _ = False
 isPoint (Interval (Just b, Just e)) = b == e
 isPoint _ = False
 
-list2 :: Maybe a -> Maybe a -> Maybe [a]
-list2 = mappend `on` fmap return
-
 -- Beware: this may do strange things with empty intervals.
 i1 `contains` i2 = intersect i1 i2 == i2
 i1 `overlaps` i2 = not . isEmpty $ i1 `intersect` i2
 i  `hasPoint` p  = i `contains` closed p p
 
+-- maybe2 is designed to do minimal allocation, which can make a huge
+-- difference in runtime (and maybe2 is one of the top bottlenecks)
+maybe2 f Nothing     = id
+maybe2 f mx@(Just x) = maybe mx (Just . f x)
+
 intersect (Interval (b1, e1)) (Interval (b2, e2)) =
-	Interval (fmap maximum (list2 b1 b2), fmap minimum (list2 e1 e2))
+	Interval (maybe2 max b1 b2, maybe2 min e1 e2)
 
 -- Nothing < Just x
 union = unsafeUnion . sortBy (comparing start) . filter (not . isEmpty) where

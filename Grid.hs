@@ -9,7 +9,6 @@ import Misc
 import StrokeSet
 
 import Control.Monad.State
-import Control.Monad.Fix
 import Data.Array
 import Data.Array.IO
 import Data.Default

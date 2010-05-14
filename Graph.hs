@@ -36,7 +36,7 @@ instance (Bounded nodeId, Bounded edgeId) => Default (Graph nodeId edgeId time) 
 	def = Graph minBound minBound def def
 
 signalNode   :: (Ord nodeId, Ord edgeId)                     =>          Path nodeId edgeId -> Interval time  -> Node  nodeId edgeId time -> ([edgeId], Node  nodeId edgeId time)
-signalEdge   :: (Eq  nodeId,             Ord time, Num time) =>          Path nodeId edgeId -> Interval time  -> Edge  nodeId        time -> ( nodeId , Interval            time)
+signalEdge   :: (Eq  nodeId,             Ord time, Num time) =>          Edge nodeId time   -> Interval time                              ->            Interval            time
 signalGraph' :: (Ord nodeId, Ord edgeId, Ord time, Num time) => (nodeId, Path nodeId edgeId,   Interval time) -> Graph nodeId edgeId time ->            Graph nodeId edgeId time
 
 refresh      :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId,              Ord time, Num time) => nodeId ->                           m ()
@@ -61,9 +61,8 @@ signalNode path signal node = (edges, newNode) where
 	edges    = Set.toList (outgoing node)
 	newNode  = node { history = updateHistory path signal (history node) }
 
-signalEdge path signal edge = (target edge, transmit signal) where
-	clip     = intersect (lifetime edge)
-	transmit = clip . (delay edge +.) . clip
+signalEdge edge = clip . (delay edge +.) . clip where
+	clip = intersect (lifetime edge)
 
 lookupList :: Ord k => k -> Map k v -> [v]
 lookupList k = maybe [] (:[]) . Map.lookup k
@@ -74,11 +73,10 @@ signalGraph' (nodeId, path, signal) graph = foldr signalGraph' graph' nextSignal
 		Nothing   -> ([], graph)
 
 	(edgeIds, graph') = (signalNode path signal `atNodeId` nodeId) graph
-	nextSignals       = [ (nodeId', appendPath nodeId edgeId path, signal')
+	nextSignals       = [ (target edge, appendPath nodeId edgeId path, signalEdge edge signal)
 	                    | edgeId <- edgeIds
 	                    , edge   <- lookupList edgeId (edges graph)
 	                    , not (target edge `elemPath` path) -- break cycles
-	                    , let (nodeId', signal') = signalEdge path signal edge
 	                    ]
 
 -- optimization idea: this function is called when an edge changes; instead of
@@ -115,12 +113,11 @@ startEdge edgeSource edgeTarget edgeDelay = startEdge' edgeSource edgeTarget edg
 addEdge   edgeSource edgeTarget edgeDelay = startEdge' edgeSource edgeTarget edgeDelay Nothing
 
 endEdge edgeId time = do
-	graph@(Graph { edges = es }) <- get
-	lookupM edgeId es $ \edge -> do
-		put graph { edges = Map.insert edgeId (newEdge edge) es }
-		refresh (source edge)
+	graph <- get
+	lookupM edgeId (edges graph) (go graph . newEdge)
 	where
-	newEdge edge@(Edge { lifetime = Interval (b, e) }) = edge { lifetime = Interval (b, Just time) }
+	newEdge  edge = edge { lifetime = Interval (start (lifetime edge), Just time) }
+	go graph edge = put graph { edges = Map.insert edgeId edge (edges graph) } >> refresh (source edge)
 
 queryNode nodeId      graph = union $ lookupList nodeId (nodes graph) >>= map snd . listHistory . history
 queryEdge edgeId time graph = union $ do
@@ -138,6 +135,6 @@ stableInterval (Interval (b, e)) = maybeMaximum [b, e]
 stableEdge    = stableInterval . lifetime
 stableHistory = maybeMaximum . map (stableInterval . snd) . listHistory
 stableNode    = stableHistory . history
-stable      g = maybeMaximum (stableEdges ++ stableNodes) where
+stable      g = maybeMaximum (stableEdges ++ stableNodes) where -- TODO: the bug is here; we need to add the maximal delay of the outgoing edges from a node to its stabilization time (or something more conservative and efficient would be fine)
 	stableEdges = map stableEdge . Map.elems . edges $ g
 	stableNodes = map stableNode . Map.elems . nodes $ g
