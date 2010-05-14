@@ -16,7 +16,7 @@ elemPath   :: Eq nodeId => nodeId -> Path nodeId edgeId -> Bool
 lastPath   :: Eq nodeId => nodeId -> Path nodeId edgeId -> Bool
 listPath   :: Path nodeId edgeId -> [(edgeId, nodeId)]
 
-updateHistory :: (Ord nodeId, Ord edgeId) =>
+updateHistory :: (Ord nodeId, Ord edgeId, Ord time) =>
 	Path nodeId edgeId -> Interval time -> History nodeId edgeId time -> History nodeId edgeId time
 listHistory   ::
 	History nodeId edgeId time -> [(Path nodeId edgeId, Interval time)]
@@ -28,5 +28,7 @@ lastPath   node      path = case listPath path of
 	[]             -> False
 listPath = id
 
-updateHistory = Map.insert
+updateHistory path signal
+	| isEmpty signal = Map.delete path
+	| otherwise      = Map.insert path signal
 listHistory   = Map.assocs

@@ -35,7 +35,7 @@ instance Default (Node nodeId edgeId time) where def = Node def def
 instance (Bounded nodeId, Bounded edgeId) => Default (Graph nodeId edgeId time) where
 	def = Graph minBound minBound def def
 
-signalNode   :: (Ord nodeId, Ord edgeId)                     =>          Path nodeId edgeId -> Interval time  -> Node  nodeId edgeId time -> ([edgeId], Node  nodeId edgeId time)
+signalNode   :: (Ord nodeId, Ord edgeId, Ord time          ) =>          Path nodeId edgeId -> Interval time  -> Node  nodeId edgeId time -> ([edgeId], Node  nodeId edgeId time)
 signalEdge   :: (Eq  nodeId,             Ord time, Num time) =>          Edge nodeId time   -> Interval time                              ->            Interval            time
 signalGraph' :: (Ord nodeId, Ord edgeId, Ord time, Num time) => (nodeId, Path nodeId edgeId,   Interval time) -> Graph nodeId edgeId time ->            Graph nodeId edgeId time
 

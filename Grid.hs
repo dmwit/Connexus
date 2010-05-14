@@ -34,7 +34,7 @@ data Connection = Connection {
 data Grid = Grid {
 	width  :: Int,
 	height :: Int,
-	graph  :: Graph NodeId EdgeId Rational,
+	graph  :: Graph NodeId EdgeId Double,
 	points :: Array Point NodeId,
 	nodeBackend :: IOArray (Point, Direction) NodeId,
 	nodeShape   :: IOArray Point [Connection],
@@ -87,8 +87,8 @@ unsafeStaticGrid es = flip evalStateT def $ do
 	h = 1 + maximum (map (snd . fst) es)
 -- }}}
 -- rendering {{{
-type RStrokeSet = StrokeSet Rational Rational
-gridStrokes, signalStrokes :: Rational -> Grid -> RStrokeSet
+type DStrokeSet = StrokeSet Double Double
+gridStrokes, signalStrokes :: Double -> Grid -> DStrokeSet
 
 gridStrokes = strokeAll (\_ _ p d -> strokeDirection p d 0 1)
 signalStrokes now grid = strokeAll stroke now grid where
@@ -104,14 +104,14 @@ signalStrokes now grid = strokeAll stroke now grid where
 
 -- optimization idea: only iterate over the edgeShape, rather than all edges in
 -- the graph (since we only draw edges in the edgeShape anyway)
-strokeAll :: (EdgeId -> EdgeType -> Point -> Direction -> RStrokeSet -> RStrokeSet) ->
-             Rational -> Grid -> RStrokeSet
+strokeAll :: (EdgeId -> EdgeType -> Point -> Direction -> DStrokeSet -> DStrokeSet) ->
+             Double -> Grid -> DStrokeSet
 strokeAll f now grid = foldr stroke def . Map.assocs . edges . graph $ grid where
 	stroke (i, e) = case (lifetime e `hasPoint` now, IntMap.lookup i $ edgeShape grid) of
 		(True, Just (t, (p, d))) -> f i t p d
 		_ -> id
 
-strokeDirection :: Point -> Direction -> Rational -> Rational -> RStrokeSet -> RStrokeSet
+strokeDirection :: Point -> Direction -> Double -> Double -> DStrokeSet -> DStrokeSet
 strokeDirection (x', y') d b' e' = case d of
 	North -> strokeVertical   x (y - e) (y - b)
 	East  -> strokeHorizontal y (x + b) (x + e)
@@ -127,14 +127,13 @@ renderStrokeSet init edge = sequence_ . zipWith renderGroup [0..] . strokes wher
 		mapM_ (edge n) es
 		stroke
 
-fr f = f `on` fromRational
 renderInitGrid 1 = setSourceRGB 0 0 0
 renderInitGrid _ = setSourceRGB 1 0 0
-renderEdgeGrid _ ((xb, yb), (xe, ye)) = fr moveTo xb yb >> fr lineTo xe ye
+renderEdgeGrid _ ((xb, yb), (xe, ye)) = moveTo xb yb >> lineTo xe ye
 renderInitSignal 0 = setSourceRGB 0 0 0.6
 renderInitSignal 1 = setSourceRGB 0 0 1
 renderInitSignal _ = setSourceRGB 1 0 0
-renderEdgeSignal _ ((xb, yb), (xe, ye)) = fr moveTo xb yb >> fr lineTo xe ye -- TODO
+renderEdgeSignal _ ((xb, yb), (xe, ye)) = moveTo xb yb >> lineTo xe ye -- TODO
 
 update grid = do
 	now <- time
@@ -144,10 +143,10 @@ update grid = do
 		renderStrokeSet renderInitGrid   renderEdgeGrid   (gridStrokes   now grid)
 		renderStrokeSet renderInitSignal renderEdgeSignal (signalStrokes now grid)
 
-stable = fmap fromRational . Graph.stable . graph
+stable = Graph.stable . graph
 -- }}}
 -- modifying {{{
-onGraph :: MonadState Grid m => State (Graph NodeId EdgeId Rational) a -> m a
+onGraph :: MonadState Grid m => State (Graph NodeId EdgeId Double) a -> m a
 onGraph m = do
 	grid <- get
 	let (a, graph') = runState m (graph grid)
