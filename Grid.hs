@@ -238,8 +238,8 @@ rotate rotation pos = do
 		    nodeIds   =  map (\d -> backend ! (pos, d)) fds
 
 		(incoming, outgoing) <- onGraph $ do
-			mapM_ (flip endEdge now . incoming) e
-			mapM_ (flip endEdge now . outgoing) e
+			mapM_ (flip deleteEdge now . incoming) e
+			mapM_ (flip deleteEdge now . outgoing) e
 			incoming <- mapM (\nodeId -> startEdge nodeId nodeCenterId defaultDelay now) nodeIds
 			outgoing <- mapM (\nodeId -> startEdge nodeCenterId nodeId defaultDelay now) nodeIds
 			return (incoming, outgoing)

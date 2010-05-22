@@ -21,10 +21,6 @@ clickGrid gridRef b x y = ioStateT go gridRef where
 
 testGraph = [((0, 0), [South, East]), ((1, 0), [West, South, East]), ((2, 0), [West]), ((0, 1), [North, East]), ((1, 1), [East, North, West]), ((2, 1), [West])]
 
--- TODO: check if the performance is acceptable after several rotations
--- if it isn't, one possible solution is to implement a separate way to
--- garbage-collect edges (as distinct from extending their life) and
--- garbage-collect the n'th oldest edges produced by rotation
 main = do
 	initGUI
 	window  <- windowNew

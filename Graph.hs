@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
-module Graph (Edge(..), Graph, edges, signalGraph, addNode, addEdge, startEdge, endEdge, queryNode, queryEdge, stable) where
+module Graph (Edge(..), Graph, edges, signalGraph, addNode, addEdge, startEdge, endEdge, deleteEdge, queryNode, queryEdge, stable) where
 
 import Interval
 import Path
@@ -45,6 +45,7 @@ addNode      :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId,           
 addEdge      :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId, Enum edgeId, Ord time, Num time) => nodeId -> nodeId -> time         -> m edgeId
 startEdge    :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId, Enum edgeId, Ord time, Num time) => nodeId -> nodeId -> time -> time -> m edgeId
 endEdge      :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId,              Ord time, Num time) => edgeId ->                   time -> m ()
+deleteEdge   :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId,              Ord time, Num time) => edgeId ->                   time -> m ()
 startEdge'   :: (MonadState (Graph nodeId edgeId time) m, Ord nodeId, Ord edgeId, Enum edgeId, Ord time, Num time) => nodeId -> nodeId -> time -> Maybe time -> m edgeId
 
 queryNode :: (Ord nodeId, Ord edgeId, Ord time, Num        time) => nodeId ->         Graph nodeId edgeId time -> [Interval time]
@@ -118,6 +119,11 @@ endEdge edgeId time = do
 	where
 	newEdge  edge = edge { lifetime = Interval (start (lifetime edge), Just time) }
 	go graph edge = put graph { edges = Map.insert edgeId edge (edges graph) } >> refresh (source edge)
+
+deleteEdge edgeId time = do
+	endEdge edgeId time
+	graph <- get
+	put graph { edges = Map.delete edgeId (edges graph) }
 
 queryNode nodeId      graph = union $ lookupList nodeId (nodes graph) >>= map snd . listHistory . history
 queryEdge edgeId time graph = union $ do
