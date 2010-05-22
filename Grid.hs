@@ -37,14 +37,13 @@ data Grid = Grid {
 	height :: Int,
 	graph  :: Graph NodeId EdgeId Double,
 	points :: Array Point NodeId,
-	nodeBackend :: IOArray (Point, Direction) NodeId, -- TODO: purify
+	nodeBackend :: Array (Point, Direction) NodeId,
 	nodeShape   :: IOArray Point [Connection],
 	edgeShape   :: IntMap (EdgeType, (Point, Direction))
 	}
 -- }}}
-defaultDelay = 0.1
+defaultDelay = 0.05
 -- creating {{{
--- TODO: return things in the same order the Grid constructor expects them
 blankGridComponents w h = do
 	backend <- newArray (((0, 0), minBound), ((w, h), maxBound)) maxBound
 	nodeIds <- liftM (listArray ((0, 0), (w,h))) (replicateM ((w+1) * (h+1)) addNode)
@@ -57,8 +56,9 @@ blankGridComponents w h = do
 		writeArray backend ((x, y), South) south
 		when (x < w) (writeArray backend ((x+1, y), West ) east )
 		when (y < h) (writeArray backend ((x, y+1), North) south)
-	shape <- newArray ((0, 0), (w, h)) []
-	return (backend, nodeIds, shape)
+	frozen <- unsafeFreeze (backend :: IOArray (Point, Direction) NodeId)
+	shape  <- newArray ((0, 0), (w, h)) []
+	return (nodeIds, frozen, shape)
 
 connect shape p d i o = do
 	conns <- readArray shape p
@@ -67,12 +67,12 @@ connect shape p d i o = do
 -- assumptions: non-empty map, each key is in the first quadrant, and each value is actually a non-empty set
 unsafeStaticGrid :: [(Point, [Direction])] -> IO Grid
 unsafeStaticGrid es = flip evalStateT def $ do
-	(backend, nodeIds, shape) <- blankGridComponents w h
+	(nodeIds, backend, shape) <- blankGridComponents w h
 	esss <- forM es $ \(p, ds) -> do
 		let n = nodeIds ! p
 		when (p == (0, 0)) $ time >>= signalGraph n . openRight . (+3)
 		forM ds $ \d -> do
-			border   <- readArray backend (p, d)
+			let border = backend ! (p, d)
 			incoming <- addEdge border n defaultDelay
 			outgoing <- addEdge n border defaultDelay
 			connect shape p d incoming outgoing
@@ -96,7 +96,7 @@ uniform = fromList . flip zip (repeat 1)
 inBound x w = 0 <= x && x < w
 
 randomGrid w h = do
-	(backend, nodeIds, shape) <- blankGridComponents (w-1) (h-1)
+	(nodeIds, backend, shape) <- blankGridComponents (w-1) (h-1)
 	origin <- getRandomR ((0, 0), (w-1, h-1))
 	es     <- randomGrid' backend nodeIds shape def [origin]
 	this   <- get
@@ -129,10 +129,11 @@ randomGrid w h = do
 					edgeShape <- link edgeShape (x + dx d, y + dy d) (aboutFace d)
 					randomGrid'' edgeShape ((x + dx d, y + dy d) : ps)
 
-		link edgeShape p d = let np = nodeIds ! p in do
-			nd <- readArray backend (p, d)
-			i  <- addEdge nd np defaultDelay
-			o  <- addEdge np nd defaultDelay
+		link edgeShape p d = do
+			let np = nodeIds ! p
+			let nd = backend ! (p, d)
+			i <- addEdge nd np defaultDelay
+			o <- addEdge np nd defaultDelay
 			connect nodeShape p d i o
 			return . IntMap.insert i (Incoming, (p, d))
 			       . IntMap.insert o (Outgoing, (p, d))
@@ -212,15 +213,16 @@ signal p t = do
 
 -- TODO: break up from being a monolithic function
 rotate rotation pos = do
-	nodes  <- gets nodeShape
-	bounds <- getBounds nodes
+	backend <- gets nodeBackend
+	nodes   <- gets nodeShape
+	bounds  <- getBounds nodes
 	when (inRange bounds pos) $ do
 		now           <- time
 		connections   <- readArray nodes pos
+		nodeCenterId  <- gets ((!pos) . points)
 		let [k, f, e] =  sequence [keep, fix, end] connections
 		    fds       =  map (rotation . direction) f
-		nodeCenterId  <- gets ((!pos) . points)
-		nodeIds       <- mapM nodeIdFor fds
+		    nodeIds   =  map (\d -> backend ! (pos, d)) fds
 
 		(incoming, outgoing) <- onGraph $ do
 			mapM_ (flip endEdge now . incoming) e
@@ -242,6 +244,5 @@ rotate rotation pos = do
 	keep = (\cs c ->      any (c `isRotationOf`) cs ) >>= filter
 	fix  = (\cs c -> not (any (`isRotationOf` c) cs)) >>= filter
 	end  = (\cs c -> not (any (c `isRotationOf`) cs)) >>= filter
-	nodeIdFor d = gets nodeBackend >>= \b -> readArray b (pos, d)
 	updateEdgeShape t ids ds = flip (foldr (\(n, d) -> IntMap.insert n (t, (pos, d)))) (zip ids ds)
 -- }}}
