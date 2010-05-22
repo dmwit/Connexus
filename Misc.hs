@@ -18,16 +18,16 @@ time = liftIO $ fmap (fromRational . toRational . flip diffUTCTime arbitraryUTCT
 ignore    = (>> return ())
 when_   b = when   b . ignore
 unless_ b = unless b . ignore
-ioStateT m sRef = do
+ioStateT sRef m = do
 	s <- liftIO (readIORef sRef)
 	(a, s') <- runStateT m s
 	liftIO (writeIORef sRef s')
 	return a
 
-lift1 f = liftIO . f
-lift2 f = (liftIO .) . f
-lift3 f = ((liftIO .) .) . f
-instance MArray IOArray e IO => MArray IOArray e (StateT s IO) where
+lift1 f = lift . f
+lift2 f = (lift .) . f
+lift3 f = ((lift .) .) . f
+instance MArray IOArray e m => MArray IOArray e (StateT s m) where
 	getBounds       = lift1 getBounds
 	getNumElements  = lift1 getNumElements
 	newArray        = lift2 newArray
