@@ -1,5 +1,5 @@
 import Direction
-import Grid (randomGrid, rotate, signal, stable, update)
+import Grid (randomGrid, rotate, rotateGridRandomly, signal, stable, update)
 --import Grid (graph, rotate, unsafeStaticGrid)
 import Misc
 import Viewport
@@ -30,7 +30,7 @@ main = do
 	window  <- windowNew
 	grid    <- evalStateT (randomGrid 11 11) def
 	gridRef <- newIORef grid
-	ioStateT (time >>= signal (5, 5) . (+2)) gridRef
+	ioStateT (rotateGridRandomly >> time >>= signal (5, 5) . (+2)) gridRef
 	da      <- viewportNew def {
 		stabilizationTime = liftM (maybe Already ExactTime . stable) (readIORef gridRef),
 		draw     = readIORef gridRef >>= update,

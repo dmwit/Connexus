@@ -17,7 +17,7 @@ import Data.Function
 import Data.IntMap (IntMap)
 import Data.List
 import Data.Map (Map)
-import Graphics.Rendering.Cairo
+import Graphics.Rendering.Cairo hiding (rotate)
 
 import qualified Data.IntMap as IntMap
 import qualified Data.Map    as Map
@@ -210,6 +210,19 @@ signal :: MonadState Grid m => Point -> Double -> m ()
 signal p t = do
 	nodeIds <- gets points
 	onGraph (signalGraph (nodeIds ! p) (openRight t))
+
+rotatePointRandomly pos = do
+	shape    <- gets nodeShape
+	ds       <- liftM (map direction) (readArray shape pos)
+	rotation <- uniform $ case map aboutFace ds \\ ds of
+		[] -> [id, clockwise, counterclockwise]
+		_  -> [id, clockwise, counterclockwise, aboutFace]
+	rotate rotation pos
+
+rotateGridRandomly = do
+	w <- gets width
+	h <- gets height
+	mapM_ rotatePointRandomly (range ((0, 0), (w-1, h-1)))
 
 -- TODO: break up from being a monolithic function
 rotate rotation pos = do
