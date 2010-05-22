@@ -1,5 +1,5 @@
 -- boilerplate {{{
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, NoMonomorphismRestriction #-}
 module Grid where
 
 import Direction
@@ -8,6 +8,7 @@ import Interval
 import Misc
 import StrokeSet
 
+import Control.Monad.Random
 import Control.Monad.State
 import Data.Array
 import Data.Array.IO
@@ -36,55 +37,106 @@ data Grid = Grid {
 	height :: Int,
 	graph  :: Graph NodeId EdgeId Double,
 	points :: Array Point NodeId,
-	nodeBackend :: IOArray (Point, Direction) NodeId,
+	nodeBackend :: IOArray (Point, Direction) NodeId, -- TODO: purify
 	nodeShape   :: IOArray Point [Connection],
 	edgeShape   :: IntMap (EdgeType, (Point, Direction))
 	}
 -- }}}
 defaultDelay = 1
 -- creating {{{
--- assumptions: non-empty map, each key is in the first quadrant, and each value is actually a non-empty set
-unsafeStaticGrid :: [(Point, [Direction])] -> IO Grid
-unsafeStaticGrid es = flip evalStateT def $ do
-	backend <- newArray (((0, 0), minBound), ((w-1, h-1), maxBound)) maxBound
-	nodeIds <- newArray ((0, 0), (w-1, h-1)) maxBound
-	forM_ (range (0, w-1)) $ \x -> addNode >>= writeArray backend ((x, 0), North)
-	forM_ (range (0, h-1)) $ \y -> addNode >>= writeArray backend ((0, y), West )
-	forM_ (range ((0, 0), (w-1, h-1))) $ \(x, y) -> do
+-- TODO: return things in the same order the Grid constructor expects them
+blankGridComponents w h = do
+	backend <- newArray (((0, 0), minBound), ((w, h), maxBound)) maxBound
+	nodeIds <- liftM (listArray ((0, 0), (w,h))) (replicateM ((w+1) * (h+1)) addNode)
+	forM_ (range (0, w)) $ \x -> addNode >>= writeArray backend ((x, 0), North)
+	forM_ (range (0, h)) $ \y -> addNode >>= writeArray backend ((0, y), West )
+	forM_ (range ((0, 0), (w, h))) $ \(x, y) -> do
 		east  <- addNode
 		south <- addNode
 		writeArray backend ((x, y), East ) east
 		writeArray backend ((x, y), South) south
-		when (x+1 < w) (writeArray backend ((x+1, y), West ) east )
-		when (y+1 < h) (writeArray backend ((x, y+1), North) south)
+		when (x < w) (writeArray backend ((x+1, y), West ) east )
+		when (y < h) (writeArray backend ((x, y+1), North) south)
+	shape <- newArray ((0, 0), (w, h)) []
+	return (backend, nodeIds, shape)
 
-	shape <- newArray ((0, 0), (w-1, h-1)) []
-	esss  <- forM es $ \(p, ds) -> do
-		n  <- addNode
-		writeArray nodeIds p n
+connect shape p d i o = do
+	conns <- readArray shape p
+	writeArray shape p (Connection d i o : conns)
+
+-- assumptions: non-empty map, each key is in the first quadrant, and each value is actually a non-empty set
+unsafeStaticGrid :: [(Point, [Direction])] -> IO Grid
+unsafeStaticGrid es = flip evalStateT def $ do
+	(backend, nodeIds, shape) <- blankGridComponents w h
+	esss <- forM es $ \(p, ds) -> do
+		let n = nodeIds ! p
 		when (p == (0, 0)) $ time >>= signalGraph n . openRight . (+3)
 		forM ds $ \d -> do
 			border   <- readArray backend (p, d)
 			incoming <- addEdge border n defaultDelay
 			outgoing <- addEdge n border defaultDelay
-			conns    <- readArray shape p
-			writeArray shape p (Connection d incoming outgoing : conns)
+			connect shape p d incoming outgoing
 			return [(incoming, (Incoming, (p, d))), (outgoing, (Outgoing, (p, d)))]
 
-	ps   <- unsafeFreeze (nodeIds :: IOArray Point NodeId)
 	this <- get
 	return Grid {
 		width  = w,
 		height = h,
 		graph  = this,
-		points = ps,
+		points = nodeIds,
 		nodeBackend = backend,
 		nodeShape   = shape,
 		edgeShape   = IntMap.fromList . concat . concat $ esss
 		}
 	where
-	w = 1 + maximum (map (fst . fst) es)
-	h = 1 + maximum (map (snd . fst) es)
+	w = maximum (map (fst . fst) es)
+	h = maximum (map (snd . fst) es)
+
+uniform = fromList . flip zip (repeat 1)
+inBound x w = 0 <= x && x < w
+
+randomGrid w h = do
+	(backend, nodeIds, shape) <- blankGridComponents (w-1) (h-1)
+	origin <- getRandomR ((0, 0), (w-1, h-1))
+	es     <- randomGrid' backend nodeIds shape def [origin]
+	this   <- get
+
+	return Grid {
+		width  = w,
+		height = h,
+		graph  = this,
+		points = nodeIds,
+		nodeBackend = backend,
+		nodeShape   = shape,
+		edgeShape   = es
+	}
+	where
+	randomGrid' backend nodeIds nodeShape = randomGrid'' where
+		randomGrid'' edgeShape [] = return edgeShape
+		randomGrid'' edgeShape ps = do
+			p@(x, y) <- uniform ps
+			already  <- liftM (map direction) $ readArray nodeShape p
+			possible <- flip filterM [minBound..maxBound] $ \d ->
+				if   inBound (x + dx d) w && inBound (y + dy d) h
+				then liftM null (readArray nodeShape (x + dx d, y + dy d))
+				else return False
+			case (already, possible) of
+				(_:_:_:_, _ ) -> randomGrid'' edgeShape (delete p ps)
+				(   _   , []) -> randomGrid'' edgeShape (delete p ps)
+				(   _   , ds) -> do
+					d <- uniform ds
+					edgeShape <- link edgeShape p d
+					edgeShape <- link edgeShape (x + dx d, y + dy d) (aboutFace d)
+					randomGrid'' edgeShape ((x + dx d, y + dy d) : ps)
+
+		link edgeShape p d = let np = nodeIds ! p in do
+			nd <- readArray backend (p, d)
+			i  <- addEdge nd np defaultDelay
+			o  <- addEdge np nd defaultDelay
+			connect nodeShape p d i o
+			return . IntMap.insert i (Incoming, (p, d))
+			       . IntMap.insert o (Outgoing, (p, d))
+			       $ edgeShape
 -- }}}
 -- rendering {{{
 type DStrokeSet = StrokeSet Double Double
@@ -153,9 +205,12 @@ onGraph m = do
 	put grid { graph = graph' }
 	return a
 
+signal :: MonadState Grid m => Point -> Double -> m ()
+signal p t = do
+	nodeIds <- gets points
+	onGraph (signalGraph (nodeIds ! p) (openRight t))
+
 -- TODO: break up from being a monolithic function
-rotate :: (MonadIO m, MonadState Grid m, MArray IOArray [Connection] m, MArray IOArray NodeId m) =>
-          (Direction -> Direction) -> Point -> m ()
 rotate rotation pos = do
 	nodes  <- gets nodeShape
 	bounds <- getBounds nodes

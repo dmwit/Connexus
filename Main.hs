@@ -1,11 +1,12 @@
 import Direction
-import Grid (rotate, stable, unsafeStaticGrid, update)
+import Grid (randomGrid, rotate, signal, stable, update)
 --import Grid (graph, rotate, unsafeStaticGrid)
 import Misc
 import Viewport
 
 import Control.Monad
 import Control.Monad.Reader
+import Control.Monad.State
 import Data.Default
 import Data.IORef
 import Graphics.UI.Gtk hiding (Viewport, viewportNew)
@@ -27,15 +28,16 @@ testGraph = [((0, 0), [South, East]), ((1, 0), [West, South, East]), ((2, 0), [W
 main = do
 	initGUI
 	window  <- windowNew
-	grid    <- unsafeStaticGrid testGraph
+	grid    <- evalStateT (randomGrid 11 11) def
 	gridRef <- newIORef grid
+	ioStateT (time >>= signal (5, 5) . (+2)) gridRef
 	da      <- viewportNew def {
 		stabilizationTime = liftM (maybe Already ExactTime . stable) (readIORef gridRef),
 		draw     = readIORef gridRef >>= update,
 		click    = clickGrid gridRef,
 		position = Position {
-			centerX = def { dimension = 1 }, centerY = def { dimension = 0.5 },
-			width   = def { dimension = 3 }, height  = def { dimension = 2   }
+			centerX = def { dimension =  5 }, centerY = def { dimension =  5 },
+			width   = def { dimension = 11 }, height  = def { dimension = 11 }
 			}
 		}
 	set window [containerChild := da]
