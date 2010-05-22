@@ -42,7 +42,7 @@ data Grid = Grid {
 	edgeShape   :: IntMap (EdgeType, (Point, Direction))
 	}
 -- }}}
-defaultDelay = 1
+defaultDelay = 0.1
 -- creating {{{
 -- TODO: return things in the same order the Grid constructor expects them
 blankGridComponents w h = do

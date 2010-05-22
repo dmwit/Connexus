@@ -47,7 +47,7 @@ instance Default Stabilization  where def = Never
 instance Default Position       where def = Position def def def { dimension = 1 } def { dimension = 1 }
 instance Default Dimension      where def = Dimension def def
 instance Default AnimationState where def = Stationary
-instance Default Viewport       where def = Viewport def def def def 15 -- ~60 fps
+instance Default Viewport       where def = Viewport def def def def 25 -- ~40 fps
 -- }}}
 -- }}}
 -- animation {{{
