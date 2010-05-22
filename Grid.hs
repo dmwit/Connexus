@@ -189,12 +189,20 @@ renderInitSignal _ = setSourceRGB 1 0 0
 renderEdgeSignal _ ((xb, yb), (xe, ye)) = moveTo xb yb >> lineTo xe ye -- TODO
 
 update grid = do
-	now <- time
+	now       <- time
+	endpoints <- filterM (liftM (null . drop 1) . readArray (nodeShape grid))
+	                     (range ((0, 0), (width grid - 1, height grid - 1)))
 	return $ do
 		setLineWidth 0.4
 		setLineCap LineCapRound
 		renderStrokeSet renderInitGrid   renderEdgeGrid   (gridStrokes   now grid)
 		renderStrokeSet renderInitSignal renderEdgeSignal (signalStrokes now grid)
+
+		setLineWidth 0
+		setSourceRGB 0 0.3 0
+		mapM_ (uncurry (circle `on` fromIntegral)) endpoints
+		fill
+	where circle x y = moveTo (x + 0.1) (y + 0.1) >> arc x y 0.1 0 (2 * pi)
 
 stable = Graph.stable . graph
 -- }}}

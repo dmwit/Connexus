@@ -120,6 +120,8 @@ endEdge edgeId time = do
 	newEdge  edge = edge { lifetime = Interval (start (lifetime edge), Just time) }
 	go graph edge = put graph { edges = Map.insert edgeId edge (edges graph) } >> refresh (source edge)
 
+-- TODO: can this possibly leave the graph in a weird state where some nodes
+-- still refer to this edge ID in their histories?
 deleteEdge edgeId time = do
 	endEdge edgeId time
 	graph <- get
