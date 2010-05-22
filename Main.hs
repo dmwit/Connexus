@@ -53,6 +53,14 @@ main = do
 	widgetShowAll window
 	mainGUI
 
+-- TODO:
+-- (among others)
+-- * clicking near the border on connections that extend out of their box
+-- * somehow indicate the boundaries between the pieces / grid spaces
+-- * do something when they win =)
+-- * don't lock off-grid locations
+-- * make it easier to change the size of the grid
+
 {-
 testGraph = [((0, 0), [South, East]), ((1, 0), [West, South, East]), ((2, 0), [West]), ((0, 1), [North, East]), ((1, 1), [East, North, West]), ((2, 1), [West])]
 
