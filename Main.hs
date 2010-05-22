@@ -1,7 +1,6 @@
 -- boilerplate {{{
 import Direction
 import Grid hiding (width, height)
---import Grid (graph, rotate, unsafeStaticGrid)
 import Lock
 import Misc
 import Viewport
@@ -29,8 +28,6 @@ drawGridLock gridRef lockRef = do
 	gridRender <- readIORef gridRef >>= Grid.update
 	lock       <- readIORef lockRef
 	return (gridRender >> Lock.update lock)
-
-testGraph = [((0, 0), [South, East]), ((1, 0), [West, South, East]), ((2, 0), [West]), ((0, 1), [North, East]), ((1, 1), [East, North, West]), ((2, 1), [West])]
 
 main = do
 	initGUI
@@ -60,13 +57,3 @@ main = do
 -- * do something when they win =)
 -- * don't lock off-grid locations
 -- * make it easier to change the size of the grid
-
-{-
-testGraph = [((0, 0), [South, East]), ((1, 0), [West, South, East]), ((2, 0), [West]), ((0, 1), [North, East]), ((1, 1), [East, North, West]), ((2, 1), [West])]
-
-main = do
-	grid    <- unsafeStaticGrid testGraph
-	gridRef <- newIORef grid
-	ioStateT gridRef $ replicateM_ 160 (rotate clockwise (1, 0))
-	readIORef gridRef >>= putStrLn . take 1 . reverse . show . graph
--}
