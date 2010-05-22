@@ -188,6 +188,18 @@ renderInitSignal 1 = setSourceRGB 0 0 1
 renderInitSignal _ = setSourceRGB 1 0 0
 renderEdgeSignal _ ((xb, yb), (xe, ye)) = moveTo xb yb >> lineTo xe ye -- TODO
 
+renderEndpoints now grid poss = do
+	setLineWidth 0
+	mark 0.3 unlit
+	mark 0.7 lit
+	where
+	litTimes pos = queryNode (points grid ! pos) (graph grid)
+	isLit    pos = any (`hasPoint` now) (litTimes pos)
+	(lit, unlit) = partition isLit poss
+	circle' x y  = moveTo (x + 0.1) (y + 0.1) >> arc x y 0.1 0 (2 * pi)
+	circle       = uncurry (circle' `on` fromIntegral)
+	mark g poss  = setSourceRGB 0 g 0 >> mapM_ circle poss >> fill
+
 update grid = do
 	now       <- time
 	endpoints <- filterM (liftM (null . drop 1) . readArray (nodeShape grid))
@@ -197,12 +209,7 @@ update grid = do
 		setLineCap LineCapRound
 		renderStrokeSet renderInitGrid   renderEdgeGrid   (gridStrokes   now grid)
 		renderStrokeSet renderInitSignal renderEdgeSignal (signalStrokes now grid)
-
-		setLineWidth 0
-		setSourceRGB 0 0.3 0
-		mapM_ (uncurry (circle `on` fromIntegral)) endpoints
-		fill
-	where circle x y = moveTo (x + 0.1) (y + 0.1) >> arc x y 0.1 0 (2 * pi)
+		renderEndpoints now grid endpoints
 
 stable = Graph.stable . graph
 -- }}}
