@@ -191,7 +191,7 @@ renderEdgeSignal _ ((xb, yb), (xe, ye)) = moveTo xb yb >> lineTo xe ye -- TODO
 renderEndpoints now grid poss = do
 	setLineWidth 0
 	mark 0.3 unlit
-	mark 0.7 lit
+	mark 0.9 lit
 	where
 	litTimes pos = queryNode (points grid ! pos) (graph grid)
 	isLit    pos = any (`hasPoint` now) (litTimes pos)

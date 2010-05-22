@@ -35,7 +35,7 @@ main = do
 	grid    <- evalStateT (randomGrid 11 11) def
 	gridRef <- newIORef grid
 	lockRef <- newIORef def
-	ioStateT gridRef $ rotateGridRandomly >> time >>= signal (5, 5) . (+2)
+	ioStateT gridRef $ rotateGridRandomly >> time >>= signal (5, 5)
 	da      <- viewportNew def {
 		stabilizationTime = liftM (maybe Already ExactTime . stable) (readIORef gridRef),
 		draw     = drawGridLock gridRef lockRef,
