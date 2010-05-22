@@ -57,3 +57,4 @@ main = do
 -- * do something when they win =)
 -- * don't lock off-grid locations
 -- * make it easier to change the size of the grid
+-- * keyboard bindings
