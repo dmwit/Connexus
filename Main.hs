@@ -64,3 +64,8 @@ main = do
 -- * make it easier to change the size of the grid
 -- * keyboard bindings
 -- * non-idiot mode: don't face edges outside
+-- * countably infinite puzzle
+-- * pipe dream mode
+-- * make drag require Ctrl or something so that middle-click is less annoying
+-- * wrapping/klein bottle mode
+-- * two-sided puzzle with links from one layer to the other or something
