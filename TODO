@@ -1,0 +1,16 @@
+* clicking near the border on connections that extend out of their box
+* somehow indicate the boundaries between the pieces / grid spaces
+* do something when they win =)
+* don't lock off-grid locations
+* make it easier to change the size of the grid
+* keyboard bindings
+* non-idiot mode: don't face edges outside
+* countably infinite puzzle
+* pipe dream mode
+* make drag require Ctrl or something so that middle-click is less annoying
+* wrapping/klein bottle mode
+* two-sided puzzle with links from one layer to the other or something
+* scrap StrokeSet in favor of taking advantage of Cairo's built-in stroke-merging
+* muck with the "Detail" section of the documentation for Graphics.UI.Gtk.OpenGL (currently it consists of the text "A typical program will look like this", and nothing more)
+* change the order for constraint solving: outside-in, but squares with only one solution sort last
+* timer + rotation countdown + new-game dialog
