@@ -2,6 +2,8 @@
 {-# LANGUAGE FlexibleContexts, NoMonomorphismRestriction #-}
 module Lock where
 
+import Misc
+
 import Control.Monad.State
 import Data.Function
 import Data.IORef
@@ -10,7 +12,6 @@ import Graphics.Rendering.Cairo
 import qualified Data.Set as Set
 -- }}}
 type Lock a = Set a
-type Point  = (Int, Int)
 
 cond         :: (Ord a, MonadState (Lock a) m) => a -> m b -> m b -> m b
 whenUnlocked :: (Ord a, MonadState (Lock a) m) => (a -> m ()) -> (a -> m ())

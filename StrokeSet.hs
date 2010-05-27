@@ -40,7 +40,7 @@ strokeAll is (is':iss) = union (is ++ is') : strokeAll (intersections is is') is
 -- optimization idea: we know ais/ais' are pre-sorted, so can get O(m+n)
 -- implementation rather than O(mn) by merging rather than producting
 intersections :: Ord a => [Interval a] -> [Interval a] -> [Interval a]
-intersections ais ais' = filter (not .isPoint) $ union [intersect ai ai' | ai <- ais, ai' <- ais']
+intersections ais ais' = filter (not . isPoint) $ union [intersect ai ai' | ai <- ais, ai' <- ais']
 
 strokeHorizontal :: (Ord h, Ord v) => v -> h -> h -> StrokeSet h v -> StrokeSet h v
 strokeVertical   :: (Ord h, Ord v) => h -> v -> v -> StrokeSet h v -> StrokeSet h v

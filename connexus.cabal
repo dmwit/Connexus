@@ -11,7 +11,21 @@ Category:            Game
 Build-type:          Simple
 Cabal-version:       >=1.2
 Executable connexus
-    Main-is: Main.hs
+    Main-is: Connexus.hs
+    Build-depends:
+        array >= 0.2,
+        base >= 3 && < 4,
+        cairo >= 0.10,
+        containers >= 0.2,
+        data-default >= 0.2,
+        gtk >= 0.10,
+        MonadRandom >= 0.1,
+        mtl >= 1.1,
+        random >= 1.0,
+        time >= 1.1
+
+Executable constraint
+    Main-is: ConstraintGUI.hs
     Build-depends:
         array >= 0.2,
         base >= 3 && < 4,

@@ -149,6 +149,7 @@ setStableTime da delay stableRef stable = do
 	      (timeoutAdd (stableTimeout da stableRef) delay)
 -- }}}
 -- expose {{{
+-- TODO: try rendering with OpenGL instead and see what happens
 exposeViewport :: IORef Position -> IO (Render a) -> EventM b Bool
 exposeViewport posRef draw = do
 	dw      <- eventWindow
@@ -223,6 +224,7 @@ releaseViewport da panRef posRef stableRef v = do
 			setStableTime da (delay v) stable (ExactTime (now + dur))
 		_ -> do
 			eventCoordinates >>= liftIO . uncurry (click v b) . worldFromScreen con
+			liftIO $ widgetQueueDraw da
 			liftIO $ stabilizationTime v >>= setStableTime da (delay v) stableRef
 	return True
 	where

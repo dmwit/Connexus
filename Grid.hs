@@ -23,7 +23,6 @@ import qualified Data.IntMap as IntMap
 import qualified Data.Map    as Map
 -- }}}
 -- types {{{
-type Point      = (Int, Int)
 type NodeId     = Int
 type EdgeId     = Int
 data EdgeType   = Incoming | Outgoing deriving (Eq, Ord, Show, Read)
