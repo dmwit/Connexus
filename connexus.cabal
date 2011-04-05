@@ -14,7 +14,7 @@ Executable connexus
     Main-is: Connexus.hs
     Build-depends:
         array >= 0.2,
-        base >= 3 && < 4,
+        base >= 3 && < 5,
         cairo >= 0.10,
         containers >= 0.2,
         data-default >= 0.2,
@@ -28,7 +28,7 @@ Executable constraint
     Main-is: ConstraintGUI.hs
     Build-depends:
         array >= 0.2,
-        base >= 3 && < 4,
+        base >= 3 && < 5,
         cairo >= 0.10,
         containers >= 0.2,
         data-default >= 0.2,
