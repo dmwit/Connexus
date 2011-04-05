@@ -14,3 +14,4 @@
 * muck with the "Detail" section of the documentation for Graphics.UI.Gtk.OpenGL (currently it consists of the text "A typical program will look like this", and nothing more)
 * change the order for constraint solving: outside-in, but squares with only one solution sort last
 * timer + rotation countdown + new-game dialog
+* play with pushGroup/popGroupToSource/whateverTheWithGroupSurfaceThingIs rather than StrokeSet
