@@ -179,6 +179,7 @@ zoomViewport da posRef delay = tryEvent $ do
 	zoom = (onZoomRef posRef .) . multiply dur . zoomFactor
 	zoomFactor ScrollUp   = 0.5
 	zoomFactor ScrollDown = 2
+	zoomFactor _ = 1
 -- }}}
 -- panning {{{
 -- pointerLocation :: (HasTime a, HasCoordinates a) => EventM a PointerLocation
