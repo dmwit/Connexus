@@ -97,7 +97,7 @@ inBound x w = 0 <= x && x < w
 randomGrid w h = do
 	(nodeIds, backend, shape) <- blankGridComponents (w-1) (h-1)
 	origin <- getRandomR ((0, 0), (w-1, h-1))
-	es     <- randomGrid' backend nodeIds shape def [origin]
+	es     <- randomGrid' backend nodeIds shape def 0 [origin]
 	this   <- get
 
 	return Grid {
@@ -111,22 +111,23 @@ randomGrid w h = do
 	}
 	where
 	randomGrid' backend nodeIds nodeShape = randomGrid'' where
-		randomGrid'' edgeShape [] = return edgeShape
-		randomGrid'' edgeShape ps = do
-			p@(x, y) <- uniform ps
+		randomGrid'' edgeShape _ [] = return edgeShape
+		randomGrid'' edgeShape n ps = do -- invariant: n = length ps - 1
+			i <- getRandomR (0, n)
+			let p@(x, y) = ps !! i
 			already  <- liftM (map direction) $ readArray nodeShape p
 			possible <- flip filterM [minBound..maxBound] $ \d ->
 				if   inBound (x + dx d) w && inBound (y + dy d) h
 				then liftM null (readArray nodeShape (x + dx d, y + dy d))
 				else return False
 			case (already, possible) of
-				(_:_:_:_, _ ) -> randomGrid'' edgeShape (delete p ps)
-				(   _   , []) -> randomGrid'' edgeShape (delete p ps)
+				(_:_:_:_, _ ) -> randomGrid'' edgeShape (n-1) (delete p ps)
+				(   _   , []) -> randomGrid'' edgeShape (n-1) (delete p ps)
 				(   _   , ds) -> do
 					d <- uniform ds
 					edgeShape <- link edgeShape p d
 					edgeShape <- link edgeShape (x + dx d, y + dy d) (aboutFace d)
-					randomGrid'' edgeShape ((x + dx d, y + dy d) : ps)
+					randomGrid'' edgeShape (n+1) ((x + dx d, y + dy d) : ps)
 
 		link edgeShape p d = do
 			let np = nodeIds ! p

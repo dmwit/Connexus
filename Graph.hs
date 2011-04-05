@@ -13,22 +13,22 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 data Edge nodeId time = Edge {
-	source      :: nodeId,
-	target      :: nodeId,
-	delay       :: time,
-	lifetime    :: Interval time
+	source      :: !nodeId,
+	target      :: !nodeId,
+	delay       :: !time,
+	lifetime    :: !(Interval time)
 	} deriving (Eq, Ord, Show, Read)
 
 data Node nodeId edgeId time = Node {
-	outgoing    :: Set edgeId,
-	history     :: History nodeId edgeId time
+	outgoing    :: !(Set edgeId),
+	history     :: !(History nodeId edgeId time)
 	} deriving (Eq, Ord, Show, Read)
 
 data Graph nodeId edgeId time = Graph {
-	nextNodeId  :: nodeId,
-	nextEdgeId  :: edgeId,
-	edges       :: Map edgeId (Edge nodeId        time),
-	nodes       :: Map nodeId (Node nodeId edgeId time)
+	nextNodeId  :: !nodeId,
+	nextEdgeId  :: !edgeId,
+	edges       :: !(Map edgeId (Edge nodeId        time)),
+	nodes       :: !(Map nodeId (Node nodeId edgeId time))
 	} deriving (Eq, Ord, Show, Read)
 
 instance Default (Node nodeId edgeId time) where def = Node def def
