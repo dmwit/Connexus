@@ -46,8 +46,9 @@ maybe2 f mx@(Just x) = maybe mx (Just . f x)
 intersect (Interval (b1, e1)) (Interval (b2, e2)) =
 	Interval (maybe2 max b1 b2, maybe2 min e1 e2)
 
+-- TODO: remove these from Interval, leaving them only in Life
 -- Nothing < Just x
-union = unsafeUnion . sortBy (comparing start) . filter (not . isEmpty) where
+union = unsafeUnion . sortBy (comparing start) . filter (not . isEmpty)
 
 unsafeUnion (i1@(Interval (b1, e1)) : i2@(Interval (_, e2)) : is)
 	-- optimization idea: if e2 is Nothing, can return immediately
