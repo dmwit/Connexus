@@ -26,7 +26,7 @@ unStrokeSet :: (a -> a -> b) -> [[Interval a]] -> [[b]]
 unStrokeMap :: (a -> b -> b -> c) -> Map a ([[Interval b]]) -> [[c]]
 
 zipMonoid        = map mconcat . transpose
-unStrokeSet f ss = [[f b e | Interval (Just b, Just e) <- is] | is <- ss]
+unStrokeSet f ss = [[f b e | i <- is, Just b <- [unsafeStart i], Just e <- [unsafeEnd i]] | is <- ss]
 unStrokeMap f    = zipMonoid . Map.elems . Map.mapWithKey (\a -> unStrokeSet (\bb be -> f a bb be))
 
 strokeMap     :: (Ord a, Ord b) => a -> b -> b -> Map a [[Interval b]] -> Map a [[Interval b]]

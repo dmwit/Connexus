@@ -117,7 +117,7 @@ endEdge edgeId time = do
 	graph <- get
 	lookupM edgeId (edges graph) (go graph . newEdge)
 	where
-	newEdge  edge = edge { lifetime = Interval (start (lifetime edge), Just time) }
+	newEdge  edge = edge { lifetime = Interval (start (lifetime edge), return time) }
 	go graph edge = put graph { edges = Map.insert edgeId edge (edges graph) } >> refresh (source edge)
 
 -- TODO: can this possibly leave the graph in a weird state where some nodes
@@ -139,7 +139,7 @@ maybeMaximum xs = case catMaybes xs of
 	[] -> Nothing
 	xs -> Just (maximum xs)
 
-stableInterval (Interval (b, e)) = maybeMaximum [b, e]
+stableInterval i = maybeMaximum [unsafeStart i, unsafeEnd i]
 stableEdge    = stableInterval . lifetime
 stableHistory = maybeMaximum . map (stableInterval . snd) . listHistory
 stableNode    = stableHistory . history

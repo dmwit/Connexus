@@ -16,6 +16,7 @@ import Data.Default
 import Data.Function
 import Data.IntMap (IntMap)
 import Data.List
+import Data.Maybe
 import Data.Map (Map)
 import Graphics.Rendering.Cairo hiding (rotate)
 
@@ -147,7 +148,7 @@ gridStrokes = strokeAll (\_ _ p d -> strokeDirection p d 0 1)
 signalStrokes now grid = strokeAll stroke now grid where
 	reverse Incoming = (1 -.)
 	reverse Outgoing = id
-	strokeInterval p d (Interval (Just b, Just e)) = strokeDirection p d b e
+	strokeInterval p d i = strokeDirection p d (fromJust . unsafeStart $ i) (fromJust . unsafeEnd $ i)
 
 	stroke eid edgeType point direction
 		= flip (foldr (strokeInterval point direction . reverse edgeType))
