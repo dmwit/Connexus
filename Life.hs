@@ -3,7 +3,7 @@ module Life (
 	Life,
 	empty, singleton,
 	isEmpty,
-	union, unions, diff, intersect,
+	union, unions, diff, intersect, stripe,
 	(+.)
 	) where
 
@@ -27,7 +27,7 @@ instance Default (Life a) where def = empty
 unLife (Life is) = is
 
 empty = Life []
-singleton i = Life [i | hasWidth i]
+singleton i = Life (strip [i])
 isEmpty = (empty ==)
 
 -- Reinstate invariant (2). Preserves invariant (3).
@@ -38,6 +38,9 @@ collapse (i1 : i2 : is) | start i1 <=. end i2
 	= collapse (Interval (on min start i1 i2, end i1) : is)
 collapse (i:is) = i : collapse is
 collapse [] = []
+
+-- Reinstate invariant (1).
+strip = filter hasWidth
 
 -- When combining many lists, can drop from O(m * n^2) to O(m * n * log (m*n))
 -- (where m is the number of lists and n is their average length) by doing a
@@ -87,3 +90,7 @@ diff (Life is) (Life is') = Life (go is is') where
 	reEnd   = AddMax . unsafeStart
 
 intersect a = diff a . diff a
+
+stripe t (Life is)
+	| t >= 0 = Life (strip    [Interval (fmap (+        t) (start i), end i) | i <- is])
+	| t <  0 = Life (collapse [Interval (fmap (subtract t) (start i), end i) | i <- is])
