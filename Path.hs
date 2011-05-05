@@ -29,6 +29,6 @@ lastPath   node      path = case listPath path of
 listPath = id
 
 updateHistory path signal
-	| isEmpty signal = Map.delete path
-	| otherwise      = Map.insert path signal
+	| hasWidth signal = Map.insert path signal
+	| otherwise       = Map.delete path
 listHistory   = Map.assocs
