@@ -27,8 +27,8 @@ query' :: (Ord nodeId, Ord time) => Graph nodeId time -> Map nodeId (Life time)
 query  :: (Ord nodeId, Ord time) => Graph nodeId time -> nodeId -> Life time
 
 query' = mapKeysWith union head . delete [] {- defensive programming -} . nodes
--- TODO: are these acrobatics really necessary to get the necessary sharing?
 query g = let q = query' g in \node -> findWithDef node q
+-- written that way so that q is shared across multiple calls with varying values of "node"
 
 propogateSignal' update path@(~(nodeId:rest)) lifetime graph
 	| null path          = graph
