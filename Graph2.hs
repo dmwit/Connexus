@@ -32,6 +32,8 @@ insert :: (Ord k1, Ord k2) => k1 -> k2 -> v -> Map k1 (Map k2 v) -> Map k1 (Map 
 lookup :: (Ord k1, Ord k2) => k1 -> k2 -> Map k1 (Map k2 v) -> Maybe v
 adjust :: (Ord k1, Ord k2) => (v -> v) -> k1 -> k2 -> Map k1 (Map k2 v) -> Map k1 (Map k2 v)
 
+-- we use "flip (uW (uW (flip const)))" instead of "uW union" because
+-- unionWith is more efficient when the large map is its first argument
 insert   k1 k2 v = flip (M.unionWith (M.unionWith (flip const))) (M.singleton k1 (M.singleton k2 v))
 lookup   k1 k2   = M.lookup k1 >=> M.lookup k2
 adjust f k1 k2   = M.adjust (M.adjust f k2) k1
@@ -73,6 +75,13 @@ addEdge        :: (Ord nodeId, Ord time, Num time) => nodeId -> nodeId ->      t
 subEdge        :: (Ord nodeId, Ord time, Num time) => nodeId -> nodeId ->      time -> Graph nodeId time -> Graph nodeId time
 initializeEdge :: (Ord nodeId, Ord time, Num time) => nodeId -> nodeId ->      time -> Graph nodeId time -> Graph nodeId time
 
+-- easily one of the most complicated functions in here, used for adding to or subtracting from an edge's lifetime
+-- mod: how to change the signal appearing at the target node in observation of the change to this edge
+-- overlap: how to compute which part of the change to the lifetime is actually a change, and which is shared with the old edge
+-- combine: how to modify the edge's lifetime once we know the actual change to make
+-- newProp: the old edge and the new edge may have different propogation characteristics; newProp tells how to pick out the important changes in this characteristic
+-- source, target: which nodes the edge connects
+-- edgeLife: the change to the lifetime of the edge
 propogateEdge' mod overlap combine newProp source target edgeLife graph = foldr ($) graph' mods where
 	oldEdge  = lookup source target (edges graph)
 	newLife  = maybe empty (overlap edgeLife . life) oldEdge
