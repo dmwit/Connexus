@@ -26,6 +26,9 @@ ioStateT sRef m = do
 	(a, s') <- runStateT m s
 	liftIO (writeIORef sRef s')
 	return a
+modifyArray array f i = do
+	v <- readArray array i
+	writeArray array i (f v)
 
 lift1 f = lift . f
 lift2 f = (lift .) . f
