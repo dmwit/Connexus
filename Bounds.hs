@@ -4,8 +4,8 @@ module Bounds where
 import Control.Monad
 import Data.Monoid
 
-newtype AddMax a = AddMax (Maybe a) deriving (Eq, Show, Read, Functor, Monad, MonadPlus, Monoid)
-newtype AddMin a = AddMin (Maybe a) deriving (Eq, Show, Read, Functor, Monad, MonadPlus, Monoid, Ord {- Nothing < Just x -})
+newtype AddMax a = AddMax (Maybe a) deriving (Eq, Show, Read, Functor, Monad, MonadPlus)
+newtype AddMin a = AddMin (Maybe a) deriving (Eq, Show, Read, Functor, Monad, MonadPlus, Ord {- Nothing < Just x -})
 
 instance Ord a => Ord (AddMax a) where
 	AddMax (Just x) `compare` AddMax (Just y) = compare x y
@@ -19,6 +19,9 @@ instance MixOrd a b => MixOrd (AddMin a) (AddMax b) where
 	mixCompare (AddMin (Just a)) (AddMax (Just b)) = mixCompare a b
 instance MixOrd b a => MixOrd (AddMax a) (AddMin b) where
 	mixCompare a b = compare EQ (mixCompare b a)
+
+instance Ord a => Monoid (AddMax a) where mempty = mzero; mappend = min
+instance Ord a => Monoid (AddMin a) where mempty = mzero; mappend = max
 
 x >.  y = mixCompare x y == GT
 x <.  y = mixCompare x y == LT

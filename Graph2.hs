@@ -3,11 +3,13 @@
 module Graph2 where
 
 import Interval (openRight)
-import Life
+import Life hiding (stable)
+import qualified Life
 
 import Control.Monad
 import Data.Default
 import Data.Map (Map)
+import Data.Monoid
 import Prelude hiding (lookup)
 import qualified Data.Map as M
 
@@ -103,3 +105,11 @@ initializeEdge source target delay graph = insertInto cleanGraph where
 	oldEdge    = lookup source target (edges graph)
 	cleanGraph = maybe id (subEdge' source target . life) oldEdge graph
 	insertInto = \g -> g { edges = insert source target (Edge delay empty) (edges g) }
+
+-- even though all the nodes may have stabilized, the entire graph may not have
+-- stabilized yet if there's still a signal traveling on its last leg in a
+-- cycle; to account for this, simply conservatively delay the stable time of
+-- the nodes by the maximal delay of any edge in the graph
+stable g = maxEdge g +. maxNode g where
+	maxNode = mconcat . map Life.stable . M.elems . nodes
+	maxEdge = maximum . (0:) . map delay . concatMap M.elems . M.elems . edges

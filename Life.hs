@@ -2,18 +2,20 @@
 module Life (
 	Life,
 	empty, singleton,
-	isEmpty,
+	isEmpty, stable,
 	union, unions, diff, intersect, stripe,
 	(+.)
 	) where
 
 import Bounds
-import Interval hiding (union, intersect, isEmpty)
+import Interval hiding (union, intersect, isEmpty, stable)
+import qualified Interval
 
 import Control.Monad
 import Data.Default
 import Data.Function
 import Data.List hiding (union, intersect)
+import Data.Monoid
 import Data.Ord
 
 -- Invariants:
@@ -29,6 +31,10 @@ unLife (Life is) = is
 empty = Life []
 singleton i = Life (strip [i])
 isEmpty = (empty ==)
+
+-- Invariants (1) and (2) ensure that if there are any intervals, the first one
+-- has the highest stable time.
+stable = mconcat . take 1 . map Interval.stable . unLife
 
 -- Reinstate invariant (2). Preserves invariant (3).
 reorder = sortBy (flip $ comparing end)

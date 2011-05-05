@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Graph (Edge(..), Graph, edges, signalGraph, addNode, addEdge, startEdge, endEdge, deleteEdge, queryNode, queryEdge, stable) where
 
-import Interval
+import Interval hiding (stable)
 import Path
 
 import Control.Monad.State

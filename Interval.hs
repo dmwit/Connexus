@@ -2,7 +2,8 @@
 module Interval (
 	Interval(..), start, end, unsafeStart, unsafeEnd,
 	open, openLeft, openRight, closed,
-	isEmpty, isPoint, hasWidth, contains, hasPoint, overlaps,
+	isEmpty, isPoint, hasWidth, stable,
+	contains, hasPoint, overlaps,
 	intersect, union,
 	(.+), (.-), (.*), (./), (+.), (-.), (*.), (/.)
 	) where
@@ -34,6 +35,7 @@ closed    b e = Interval (return b, return e)
 isEmpty  i = start i >.  end i
 isPoint  i = start i ==. end i
 hasWidth i = start i <.  end i
+stable   i = maybe (start i) return (unsafeEnd i)
 
 -- Beware: this may do strange things with empty intervals.
 i1 `contains` i2 = intersect i1 i2 == i2
