@@ -14,10 +14,16 @@ dy East  =  0
 dy South =  1
 dy West  =  0
 
-clockwise North = East
-clockwise East  = South
-clockwise South = West
-clockwise West  = North
+step d (x, y) = (x + dx d, y + dy d)
 
-aboutFace = clockwise . clockwise
-counterclockwise = clockwise . clockwise . clockwise
+class Oriented a where
+	clockwise, aboutFace, counterclockwise :: a -> a
+	clockwise = counterclockwise . counterclockwise . counterclockwise
+	counterclockwise = clockwise . clockwise . clockwise
+	aboutFace = clockwise . clockwise
+
+instance Oriented Direction where
+	clockwise North = East
+	clockwise East  = South
+	clockwise South = West
+	clockwise West  = North

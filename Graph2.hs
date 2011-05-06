@@ -71,11 +71,11 @@ subSignal' = propogateSignal' (\path nodeDeath -> M.adjust (`diff` nodeDeath) pa
 addSignal  = propogateSignal addSignal' diff
 subSignal  = propogateSignal subSignal' intersect
 
-addEdge'       :: (Ord nodeId, Ord time, Num time) => nodeId -> nodeId -> Life time -> Graph nodeId time -> Graph nodeId time
-subEdge'       :: (Ord nodeId, Ord time, Num time) => nodeId -> nodeId -> Life time -> Graph nodeId time -> Graph nodeId time
-addEdge        :: (Ord nodeId, Ord time, Num time) => nodeId -> nodeId ->      time -> Graph nodeId time -> Graph nodeId time
-subEdge        :: (Ord nodeId, Ord time, Num time) => nodeId -> nodeId ->      time -> Graph nodeId time -> Graph nodeId time
-initializeEdge :: (Ord nodeId, Ord time, Num time) => nodeId -> nodeId ->      time -> Graph nodeId time -> Graph nodeId time
+addEdge'       :: (Ord nodeId, Ord time, Num time) => Life time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
+subEdge'       :: (Ord nodeId, Ord time, Num time) => Life time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
+addEdge        :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
+subEdge        :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
+initializeEdge :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 
 -- easily one of the most complicated functions in here, used for adding to or subtracting from an edge's lifetime
 -- mod: how to change the signal appearing at the target node in observation of the change to this edge
@@ -84,7 +84,7 @@ initializeEdge :: (Ord nodeId, Ord time, Num time) => nodeId -> nodeId ->      t
 -- newProp: the old edge and the new edge may have different propogation characteristics; newProp tells how to pick out the important changes in this characteristic
 -- source, target: which nodes the edge connects
 -- edgeLife: the change to the lifetime of the edge
-propogateEdge' mod overlap combine newProp source target edgeLife graph = foldr ($) graph' mods where
+propogateEdge' mod overlap combine newProp edgeLife source target graph = foldr ($) graph' mods where
 	oldEdge  = lookup source target (edges graph)
 	newLife  = maybe empty (overlap edgeLife . life) oldEdge
 	newEdge  = fmap (\e -> e { life = combine newLife (life e) }) oldEdge
@@ -99,11 +99,11 @@ addEdge' = propogateEdge' addSignal' diff      union       diff
 subEdge' = propogateEdge' subSignal' intersect (flip diff) (flip diff)
 addEdge  = unPrime addEdge'
 subEdge  = unPrime subEdge'
-unPrime f' source target = f' source target . singleton . openRight
+unPrime f' time source target = f' (singleton (openRight time)) source target
 
-initializeEdge source target delay graph = insertInto cleanGraph where
+initializeEdge delay source target graph = insertInto cleanGraph where
 	oldEdge    = lookup source target (edges graph)
-	cleanGraph = maybe id (subEdge' source target . life) oldEdge graph
+	cleanGraph = maybe id (\e -> subEdge' (life e) source target) oldEdge graph
 	insertInto = \g -> g { edges = insert source target (Edge delay empty) (edges g) }
 
 -- even though all the nodes may have stabilized, the entire graph may not have
