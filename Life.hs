@@ -1,15 +1,16 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 module Life (
-	Life,
+	Life(), unLife,
 	empty, singleton,
-	isEmpty, stable,
+	isEmpty, stable, contains,
 	union, unions, diff, intersect, stripe,
-	(+.)
+	contiguous,
+	(+.), (-.), (*.), (/.), (.+), (.-), (.*), (./)
 	) where
 
 import Bounds
-import Interval hiding (union, intersect, isEmpty, stable)
-import qualified Interval
+import Interval (start, end, unsafeStart, unsafeEnd, hasWidth, Interval(..))
+import qualified Interval as I
 
 import Control.Monad
 import Data.Default
@@ -32,9 +33,10 @@ empty = Life []
 singleton i = Life (strip [i])
 isEmpty = (empty ==)
 
+-- TODO: typeclass this
 -- Invariants (1) and (2) ensure that if there are any intervals, the first one
 -- has the highest stable time.
-stable = mconcat . take 1 . map Interval.stable . unLife
+stable = mconcat . take 1 . map I.stable . unLife
 
 -- Reinstate invariant (2). Preserves invariant (3).
 reorder = sortBy (flip $ comparing end)
@@ -83,7 +85,7 @@ diff (Life is) (Life is') = Life (go is is') where
 	go [] is = []
 	go is [] = is
 	go is@(i:t) is'@(i':t')
-		| i' `contains` i = go t is'
+		| i' `I.contains`   i  = go t is'
 		| start i >=. end   i' = i : go t is'
 		| end   i <=. start i' = go is t'
 		| start i <   start i' &&
@@ -95,8 +97,33 @@ diff (Life is) (Life is') = Life (go is is') where
 	reStart = AddMin . unsafeEnd
 	reEnd   = AddMax . unsafeStart
 
-intersect a = diff a . diff a
+intersect  a = diff a . diff a
+contiguous t = Life . takeWhile (\i -> return t <= end i) . dropWhile (\i -> return t < start i) . unLife
+contains t l = not . isEmpty $ contiguous l t
 
 stripe t (Life is)
 	| t >= 0 = Life (strip    [Interval (fmap (+        t) (start i), end i) | i <- is])
 	| t <  0 = Life (collapse [Interval (fmap (subtract t) (start i), end i) | i <- is])
+
+-- TODO: typeclass this
+-- the dot goes on the unusual (i.e. the Life) side
+infixl 6 .+
+infixl 6 +.
+infixl 6 .-
+infixl 6 -.
+infixl 7 .*
+infixl 7 *.
+infixl 7 ./
+infixl 7 /.
+
+(.+)   = (I..+)
+(.-)   = (I..-)
+(+.)   = (I.+.)
+i .* t = t *. i
+i ./ t = i .* recip t
+t -. i = t +. (-1) *. i
+t *. (Life is)
+	| t  < 0 = Life . reverse  . map (t I.*.) $ is
+	| t  > 0 = Life            . map (t I.*.) $ is
+	| t == 0 = Life . collapse . map (t I.*.) $ is
+t /. (Life is) = t *. Life (map (1 I./.) is)

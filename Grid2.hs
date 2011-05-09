@@ -1,10 +1,15 @@
 -- boilerplate {{{1
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module Grid2 where
+module Grid2 (
+	Grid(..), randomGrid, unsafeStaticGrid, update, rotateGridRandomly, signal, rotate, stable
+	) where
 
 import Direction
-import Graph2
+import Graph2 hiding (stable)
+import Interval (unsafeStart, unsafeEnd)
+import Life hiding (stable)
 import Misc
+import qualified Graph2 as G
 
 import Control.Monad
 import Control.Monad.Instances
@@ -12,8 +17,10 @@ import Control.Monad.Random
 import Control.Monad.Trans
 import Data.Array.IO
 import Data.Default
-import Data.List
+import Data.List hiding (intersect, union)
+import Data.Maybe
 import Data.Ord
+import Graphics.Rendering.Cairo hiding (rotate)
 
 -- Node and Piece types {{{1
 data Node a
@@ -55,10 +62,10 @@ toggle d p = piece (\d' -> (d == d') /= unPiece p d')
 -- Grid type {{{1
 data Grid a t = Grid {
 	pieces :: IOArray (a,a) Piece,
-	graph  :: Graph (Node a) t
+	graph  :: Graph (Node a) t -- TODO: IORef this
 	}
 -- }}}
-defaultDelay = 0.05
+defaultDelay = 1
 -- creation {{{1
 grid :: (Ix a, Num a, Fractional t, Ord t, MonadIO m) =>
 	IOArray (a, a) Piece -> m (Grid a t)
@@ -121,14 +128,49 @@ randomGrid w h = do
 		return . filter (unPiece p) $ [minBound .. maxBound]
 
 -- rendering {{{1
--- TODO
+x' l@(RightOf {}) = fromIntegral (x l) + 0.5
+x' l              = fromIntegral (x l)
+y' l@(Above   {}) = fromIntegral (y l) - 0.5
+y' l              = fromIntegral (y l)
+
+signalEitherDirection s t l = forM_ (unLife l) $ \i -> do
+	moveTo (x' s + fromMaybe 0 (unsafeStart i) * (x' t - x' s))
+	       (y' s + fromMaybe 0 (unsafeStart i) * (y' t - y' s))
+	lineTo (x' s + fromMaybe 1 (unsafeEnd   i) * (x' t - x' s))
+	       (y' s + fromMaybe 1 (unsafeEnd   i) * (y' t - y' s))
+
+backgroundPath   s t _ = moveTo (x' s) (y' s) >> lineTo (x' t) (y' t)
+singleSignal now s t g = signalEitherDirection s t (queryEdge now s t g `union`     (1 -. queryEdge now t s g))
+doubleSignal now s t g = signalEitherDirection s t (queryEdge now s t g `intersect` (1 -. queryEdge now t s g))
+
+forLiveEdges :: (Ix a, Num a, MonadIO m) =>
+	(Node a -> Node a -> Graph (Node a) t -> m ()) ->
+	Grid a t ->
+	m ()
+forLiveEdges f grid = do
+	bounds <- liftIO $ getBounds (pieces grid)
+	forM_ (range bounds) $ \pos -> do
+		piece <- liftIO $ readArray (pieces grid) pos
+		forM_ [minBound .. maxBound] $ \dir -> when (unPiece piece dir) (f (lattice pos) (neighbor dir pos) (graph grid))
+
+update grid = do
+	now <- time
+	setLineWidth 0.4
+	setLineCap LineCapRound
+	setSourceRGB  0 0 0
+	forLiveEdges backgroundPath     grid >> stroke
+	setSourceRGBA 0 0 1 0.6
+	forLiveEdges (singleSignal now) grid >> stroke
+	forLiveEdges (doubleSignal now) grid >> stroke
 -- modification {{{1
+-- TODO: don't return, just update
 rotate rotation pos grid = do
 	bounds <- getBounds (pieces grid)
 	if inRange bounds pos
 		then unsafeRotate rotation pos grid
 		else return grid
 
+-- TODO: don't return, just update
 unsafeRotate rotation pos grid = do
 	now <- time
 	p   <- readArray (pieces grid) pos
@@ -148,6 +190,9 @@ unsafeRotatePointRandomly grid pos = do
 	rotation <- uniform [id, clockwise, aboutFace, counterclockwise]
 	unsafeRotate rotation pos grid
 
+-- TODO: don't return, just update
 signal pos grid = do
 	now <- time
 	return grid { graph = addSignal (lattice pos) now (graph grid) }
+
+stable = G.stable . graph

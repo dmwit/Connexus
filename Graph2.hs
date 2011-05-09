@@ -2,7 +2,7 @@
 
 module Graph2 where
 
-import Interval (openRight)
+import Interval (closed, openRight)
 import Life hiding (stable)
 import qualified Life
 
@@ -113,3 +113,14 @@ initializeEdge delay source target graph = insertInto cleanGraph where
 stable g = maxEdge g +. maxNode g where
 	maxNode = mconcat . map Life.stable . M.elems . nodes
 	maxEdge = maximum . (0:) . map delay . concatMap M.elems . M.elems . edges
+
+queryEdge :: (Ord nodeId, Ord time, Num time, Fractional time) =>
+	time -> nodeId -> nodeId -> Graph nodeId time -> Life time
+queryEdge time source target graph = maybe empty signal edge where
+	edge       = lookup source target (edges graph)
+	signal   e = scale (intersect (singleProp (life e)) signalLife) (delay e)
+	scale  l d = intersect (singleton (closed 0 1)) $ (time -. l) ./ d
+	singleProp = contiguous time
+	signalLife = findWithDef source . M.mapKeysWith union head . M.filterWithKey valid . nodes $ graph
+	valid  k _ = not (null k) && take 1 (drop 1 k) /= [target]
+	-- @valid@ makes sure we don't send a signal right back to the node it came from
