@@ -65,7 +65,7 @@ data Grid a t = Grid {
 	graph  :: Graph (Node a) t -- TODO: IORef this
 	}
 -- }}}
-defaultDelay = 1
+defaultDelay = 2
 -- creation {{{1
 grid :: (Ix a, Num a, Fractional t, Ord t, MonadIO m) =>
 	IOArray (a, a) Piece -> m (Grid a t)
@@ -153,6 +153,7 @@ forLiveEdges f grid = do
 		piece <- liftIO $ readArray (pieces grid) pos
 		forM_ [minBound .. maxBound] $ \dir -> when (unPiece piece dir) (f (lattice pos) (neighbor dir pos) (graph grid))
 
+-- TODO: draw dots for terminals
 update grid = do
 	now <- time
 	setLineWidth 0.4

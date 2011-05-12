@@ -15,7 +15,8 @@ import qualified Data.Map as M
 
 data Edge time = Edge {
 	delay :: time,
-	life  :: Life time
+	life  :: Life time,
+	signalCache :: Life time
 	} deriving (Eq, Ord, Show, Read)
 
 -- TODO: cache this in Edge itself?
@@ -40,20 +41,27 @@ insert   k1 k2 v = flip (M.unionWith (M.unionWith (flip const))) (M.singleton k1
 lookup   k1 k2   = M.lookup k1 >=> M.lookup k2
 adjust f k1 k2   = M.adjust (M.adjust f k2) k1
 
-query' :: (Ord nodeId, Ord time) => Graph nodeId time -> Map nodeId (Life time)
-query  :: (Ord nodeId, Ord time) => Graph nodeId time -> nodeId -> Life time
-
-query' = M.mapKeysWith union head . M.delete [] {- defensive programming -} . nodes
-query g = let q = query' g in \node -> findWithDef node q
--- written that way so that q is shared across multiple calls with varying values of "node"
-
-propogateSignal' update path@(~(nodeId:rest)) lifetime graph
+-- TODO: parallelize this, or rather, incrementalize this, and make a separate
+-- thread for doing the incremental computations (to keep the interface snappy)
+--
+-- basic idea:
+--    * instead of doing all the propogation at once, do the update only for
+--      this path, and return the list of pending updates that are generated as
+--      a result
+--    * keep a priority queue of updates; the priority should be path length,
+--      with ties broken by the order the *original update* that spawned the
+--      current update were put in the queue (so, for example, this could be
+--      tracked via the time that the spawning update was put in the queue)
+--    * in the GUI thread, just stick an update in the queue
+--    * in the worker thread, pop updates off, compute them, and update the
+--      graph that the GUI thread is looking at
+propogateSignal' update path@(~(source:rest)) lifetime graph
 	| null path          = graph
 	| isEmpty lifetime   = graph
-	| nodeId `elem` rest = graph
+	| source `elem` rest = graph
 	| otherwise          = foldr ($) graph' modifications where
-	outgoing      = M.assocs (findWithDef nodeId (edges graph))
-	modifications = [propogateSignal' update (nodeId':path) (shift edge) | (nodeId', edge) <- outgoing]
+	outgoing      = M.assocs (findWithDef source (edges graph))
+	modifications = [recache source target . propogateSignal' update (target:path) (shift edge) | (target, edge) <- outgoing]
 	graph'        = graph { nodes = update path lifetime (nodes graph) }
 	shift edge    = intersect (propogation edge) (delay edge +. lifetime)
 
@@ -93,7 +101,7 @@ propogateEdge' mod overlap combine newProp edgeLife source target graph = foldr 
 	graph'   = graph { edges = adjust (\e -> maybe e id newEdge) source target (edges graph) }
 	signals  = M.filterWithKey (\k _ -> take 1 k == [source]) (nodes graph)
 	delayM   = maybe 0 delay newEdge -- the 0 should never matter, because anything using it will be thrown away
-	mods     = [mod (target:path) (intersect propLife (delayM +. lifetime)) | (path, lifetime) <- M.assocs signals]
+	mods     = recache source target : [mod (target:path) (intersect propLife (delayM +. lifetime)) | (path, lifetime) <- M.assocs signals]
 
 addEdge' = propogateEdge' addSignal' diff      union       diff
 subEdge' = propogateEdge' subSignal' intersect (flip diff) (flip diff)
@@ -104,7 +112,7 @@ unPrime f' time source target = f' (singleton (openRight time)) source target
 initializeEdge delay source target graph = insertInto cleanGraph where
 	oldEdge    = lookup source target (edges graph)
 	cleanGraph = maybe id (\e -> subEdge' (life e) source target) oldEdge graph
-	insertInto = \g -> g { edges = insert source target (Edge delay empty) (edges g) }
+	insertInto = \g -> g { edges = insert source target (Edge delay empty empty) (edges g) }
 
 -- even though all the nodes may have stabilized, the entire graph may not have
 -- stabilized yet if there's still a signal traveling on its last leg in a
@@ -114,13 +122,21 @@ stable g = maxEdge g +. maxNode g where
 	maxNode = mconcat . map Life.stable . M.elems . nodes
 	maxEdge = maximum . (0:) . map delay . concatMap M.elems . M.elems . edges
 
+-- TODO: reverse the meaning of 0 and 1 so that we don't have to do a (-.) --
+-- and hence don't have to do a reverse
+scaleSignal :: (Ord time, Num time, Fractional time) => time -> Edge time -> Life time
+scaleSignal now edge = (./ delay edge) . (now -.) . intersect live . signalCache $ edge where
+	live = intersect (singleton (closed (now - delay edge) now)) (contiguous now (life edge))
+
+-- TODO: inline this
+queryEdge' :: (Ord nodeId, Ord time) => nodeId -> nodeId -> Graph nodeId time -> Life time
+queryEdge' source target = findWithDef source . M.mapKeysWith union head . M.filterWithKey valid . nodes where
+	valid  k _ = take 1 k == [source] && take 1 (drop 1 k) /= [target]
+	-- @valid@ makes sure we don't send a signal right back to the node it came from
+
+recache :: (Ord nodeId, Ord time) => nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
+recache source target graph = graph { edges = adjust (\edge -> edge { signalCache = queryEdge' source target graph }) source target (edges graph) }
+
 queryEdge :: (Ord nodeId, Ord time, Num time, Fractional time) =>
 	time -> nodeId -> nodeId -> Graph nodeId time -> Life time
-queryEdge time source target graph = maybe empty signal edge where
-	edge       = lookup source target (edges graph)
-	signal   e = scale (intersect (singleProp (life e)) signalLife) (delay e)
-	scale  l d = intersect (singleton (closed 0 1)) $ (time -. l) ./ d
-	singleProp = contiguous time
-	signalLife = findWithDef source . M.mapKeysWith union head . M.filterWithKey valid . nodes $ graph
-	valid  k _ = not (null k) && take 1 (drop 1 k) /= [target]
-	-- @valid@ makes sure we don't send a signal right back to the node it came from
+queryEdge now source target = maybe empty (scaleSignal now) . lookup source target . edges

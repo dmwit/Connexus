@@ -39,6 +39,7 @@ main = do
 		_ -> (11, 11)
 	window  <- windowNew
 	grid    <- randomGrid w h >>= rotateGridRandomly >>= signal (w `div` 2, h `div` 2)
+	--grid    <- unsafeStaticGrid ([((0,y),[North,East,South]) | y <- [0..10]] ++ [((1,y),[North,West,South]) | y <- [0..10]]) >>= signal (0,0)
 	gridRef <- newIORef grid
 	lockRef <- newIORef def
 	da      <- viewportNew def {
