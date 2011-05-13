@@ -26,7 +26,7 @@ clickGrid gridRef lockRef b x y = case b of
 	pos = (round x, round y)
 
 drawGridLock gridRef lockRef = do
-	liftIO (readIORef gridRef) >>= Grid2.update
+	liftIO (readIORef gridRef) >>= Grid.update
 	liftIO (readIORef lockRef) >>= Lock.update
 
 main = do
