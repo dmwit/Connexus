@@ -24,7 +24,7 @@ import Data.Ord
 -- 2. the list is sorted in descending order of ending time
 -- 3. all intervals have (positive) width
 -- Together, (1) and (2) mean that for any sublist @i1:i2:is@, we have @end i2 <. start i1@.
-newtype Life time = Life [Interval time] deriving (Eq, Ord, Read, Show)
+newtype Life time = Life [Interval time] deriving (Eq, Read, Show)
 instance Functor Life where fmap f (Life is) = Life (map (fmap f) is)
 instance Default (Life a) where def = empty
 unLife (Life is) = is

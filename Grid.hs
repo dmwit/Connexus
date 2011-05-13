@@ -1,7 +1,7 @@
 -- boilerplate {{{1
 {-# LANGUAGE NoMonomorphismRestriction #-}
 module Grid (
-	Grid(..), randomGrid, unsafeStaticGrid, update, rotateGridRandomly, signal, rotate, stable
+	Grid(..), randomGrid, staticGrid, update, rotateGridRandomly, signal, rotate, stable
 	) where
 
 import Bounds
@@ -84,10 +84,6 @@ grid array = liftIO $ do
 		d <- [minBound .. maxBound]
 		guard (pred d)
 		return (both f (lattice pos) (neighbor d pos))
-
--- TODO: remove this legacy name after completing the merge with all the "2"
--- versions of files
-unsafeStaticGrid = staticGrid
 
 staticGrid :: [(Point, [Direction])] -> IO (Grid Int Double)
 staticGrid [] = newArray ((0,0),(0,0)) def >>= grid

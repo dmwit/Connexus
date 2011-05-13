@@ -19,13 +19,13 @@ data Edge time = Edge {
 	delay :: time,
 	life  :: Life time,
 	signalCache :: Life time
-	} deriving (Eq, Ord, Show, Read)
+	} deriving (Eq, Show, Read)
 propogation e = stripe (delay e) (life e)
 
 data Graph nodeId time = Graph {
 	edges :: Map nodeId (Map nodeId (Edge time)),
 	nodes :: Map [nodeId] (Life time) -- no empty lists as keys
-	} deriving (Eq, Ord, Show, Read)
+	} deriving (Eq, Show, Read)
 instance Default (Graph nodeId time) where def = Graph def def
 
 -- utility functions for working with a nested Map {{{1

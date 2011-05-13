@@ -2,24 +2,26 @@
 module Interval (
 	Interval(..), start, end, unsafeStart, unsafeEnd,
 	open, openLeft, openRight, closed,
-	isEmpty, isPoint, hasWidth,
-	contains, hasPoint, overlaps,
-	intersect, union,
+	hasWidth, contains,
 	NumLike(..),
 	) where
 
 import Bounds
 
 import Control.Monad
+import Data.Function
 import Data.List (sortBy)
 import Data.Maybe
 import Data.Ord
 
--- Beware: these Eq and Ord instances are not meant to be meaningful! (In
--- particular, they may do strange things with empty intervals.) TODO: fix this
--- (at least for the Eq instance) by making all empty intervals equal.
-newtype Interval a = Interval (AddMin a, AddMax a) deriving (Eq, Ord, Show, Read)
+newtype Interval a = Interval (AddMin a, AddMax a) deriving (Show, Read)
 instance Functor Interval where fmap f (Interval (b, e)) = Interval (fmap f b, fmap f e)
+
+instance Ord a => Eq (Interval a) where
+	i == i' = on (&&) (not . hasWidth) i i' ||
+	          start i == start i' && end i == end i'
+
+instance Stable Interval where stable i = maybe (start i) return (unsafeEnd i)
 
 start (Interval (b, e)) = b
 end   (Interval (b, e)) = e
@@ -32,28 +34,8 @@ openLeft    e = Interval (mzero   , return e)
 openRight b   = Interval (return b, mzero   )
 closed    b e = Interval (return b, return e)
 
-isEmpty  i = start i >.  end i
-isPoint  i = start i ==. end i
-hasWidth i = start i <.  end i
-
-instance Stable Interval where stable i = maybe (start i) return (unsafeEnd i)
-
--- Beware: this may do strange things with empty intervals.
-i1 `contains` i2 = intersect i1 i2 == i2
-i1 `overlaps` i2 = not . isEmpty $ i1 `intersect` i2
-i  `hasPoint` p  = i `contains` closed p p
-
-intersect (Interval (b1, e1)) (Interval (b2, e2)) =
-	Interval (max b1 b2, min e1 e2)
-
--- TODO: remove these from Interval, leaving them only in Life
-union = unsafeUnion . sortBy (comparing start) . filter (not . isEmpty)
-
-unsafeUnion (i1@(Interval (b1, e1)) : i2@(Interval (_, e2)) : is)
-	-- optimization idea: if e2 is Nothing, can return immediately
-	| i1 `overlaps` i2 = unsafeUnion (Interval (b1, liftM2 max e1 e2) : is)
-	| otherwise        = i1 : unsafeUnion (i2 : is)
-unsafeUnion is = is
+hasWidth i      = start i <. end i
+i `contains` i' = start i >=. start i' && end i <=. end i'
 
 infixl 6 .+
 infixl 6 +.
