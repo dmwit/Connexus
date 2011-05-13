@@ -38,9 +38,11 @@ main = do
 		_ -> (11, 11)
 	window  <- windowNew
 	grid    <- evalStateT (randomGrid w h) def
+	--grid    <- unsafeStaticGrid ([((0,y),[North,East,South]) | y <- [0..10]] ++ [((1,y),[North,West,South]) | y <- [0..10]])
 	gridRef <- newIORef grid
 	lockRef <- newIORef def
 	ioStateT gridRef $ rotateGridRandomly >> time >>= signal (w `div` 2, h `div` 2)
+	--ioStateT gridRef $ time >>= signal (0,0)
 	da      <- viewportNew def {
 		stabilizationTime = liftM (maybe Already ExactTime . stable) (readIORef gridRef),
 		draw     = drawGridLock gridRef lockRef,

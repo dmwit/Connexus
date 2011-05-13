@@ -4,12 +4,12 @@ module Grid2 (
 	Grid(..), randomGrid, unsafeStaticGrid, update, rotateGridRandomly, signal, rotate, stable
 	) where
 
+import Bounds
 import Direction
-import Graph2 hiding (stable)
+import Graph2
 import Interval (unsafeStart, unsafeEnd)
-import Life hiding (stable)
+import Life
 import Misc
-import qualified Graph2 as G
 
 import Control.Monad
 import Control.Monad.Instances
@@ -21,6 +21,8 @@ import Data.List hiding (intersect, union)
 import Data.Maybe
 import Data.Ord
 import Graphics.Rendering.Cairo hiding (rotate)
+
+import qualified Data.Map as M
 
 -- Node and Piece types {{{1
 data Node a
@@ -65,7 +67,7 @@ data Grid a t = Grid {
 	graph  :: Graph (Node a) t -- TODO: IORef this
 	}
 -- }}}
-defaultDelay = 2
+defaultDelay = 0.05
 -- creation {{{1
 grid :: (Ix a, Num a, Fractional t, Ord t, MonadIO m) =>
 	IOArray (a, a) Piece -> m (Grid a t)
@@ -143,26 +145,36 @@ backgroundPath   s t _ = moveTo (x' s) (y' s) >> lineTo (x' t) (y' t)
 singleSignal now s t g = signalEitherDirection s t (queryEdge now s t g `union`     (1 -. queryEdge now t s g))
 doubleSignal now s t g = signalEitherDirection s t (queryEdge now s t g `intersect` (1 -. queryEdge now t s g))
 
-forLiveEdges :: (Ix a, Num a, MonadIO m) =>
-	(Node a -> Node a -> Graph (Node a) t -> m ()) ->
-	Grid a t ->
-	m ()
-forLiveEdges f grid = do
-	bounds <- liftIO $ getBounds (pieces grid)
-	forM_ (range bounds) $ \pos -> do
-		piece <- liftIO $ readArray (pieces grid) pos
-		forM_ [minBound .. maxBound] $ \dir -> when (unPiece piece dir) (f (lattice pos) (neighbor dir pos) (graph grid))
+forPoints_ :: (Ix i, MonadIO m) => IOArray i e -> (i -> e -> m ()) -> m ()
+forPoints_ array f = liftIO (getAssocs array) >>= mapM_ (uncurry f)
 
--- TODO: draw dots for terminals
+forLiveEdges_ :: (Ix a, Num a, MonadIO m) =>
+	(Node a -> Node a -> Graph (Node a) t -> m ()) -> Grid a t -> m ()
+forLiveEdges_ f grid =
+	forPoints_ (pieces grid) $ \pos piece ->
+		forM_ [minBound .. maxBound] $ \dir ->
+			when (unPiece piece dir) (f (lattice pos) (neighbor dir pos) (graph grid))
+
+markTerminals now signals pos@(x',y') piece = when terminal $ do
+	if lit then setSourceRGB 0 0.9 0 else setSourceRGB 0 0.3 0
+	moveTo (x + 0.1) (y + 0.1)
+	arc x y 0.1 0 (2 * pi)
+	fill
+	where
+	terminal = [() | dir <- [north, east, south, west], dir piece] == [()]
+	(x, y)   = (fromIntegral x', fromIntegral y')
+	lit      = fromMaybe empty (M.lookup (lattice pos) signals) `contains` now
+
 update grid = do
 	now <- time
 	setLineWidth 0.4
 	setLineCap LineCapRound
 	setSourceRGB  0 0 0
-	forLiveEdges backgroundPath     grid >> stroke
+	forLiveEdges_ backgroundPath     grid >> stroke
 	setSourceRGBA 0 0 1 0.6
-	forLiveEdges (singleSignal now) grid >> stroke
-	forLiveEdges (doubleSignal now) grid >> stroke
+	forLiveEdges_ (singleSignal now) grid >> stroke
+	forLiveEdges_ (doubleSignal now) grid >> stroke
+	forPoints_ (pieces grid) (markTerminals now (querySignals (graph grid)))
 -- modification {{{1
 -- TODO: don't return, just update
 rotate rotation pos grid = do
@@ -196,4 +208,4 @@ signal pos grid = do
 	now <- time
 	return grid { graph = addSignal (lattice pos) now (graph grid) }
 
-stable = G.stable . graph
+instance Stable (Grid a) where stable = stable . graph

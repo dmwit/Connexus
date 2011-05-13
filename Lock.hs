@@ -14,7 +14,7 @@ import qualified Data.Set as Set
 type Lock a = Set a
 
 cond         :: (Ord a, MonadState (Lock a) m) => a -> m b -> m b -> m b
-whenUnlocked :: (Ord a, MonadState (Lock a) m) => (a -> m ()) -> (a -> m ())
+whenUnlocked :: (Ord a, MonadState (Lock a) m) => a -> m () -> m ()
 toggle       :: (Ord a, MonadState (Lock a) m) => a -> m ()
 update       :: Lock Point -> Render ()
 
@@ -22,7 +22,7 @@ cond a t f = do
 	on <- gets (a `Set.member`)
 	if on then t else f
 
-whenUnlocked f a = cond a (return ()) (f a)
+whenUnlocked = flip cond (return ())
 toggle a = cond a (modify (Set.delete a)) (modify (Set.insert a))
 
 -- TODO: do somekind of pretty fuzzy cloud

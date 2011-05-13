@@ -21,10 +21,8 @@ clickGrid gridRef lockRef b x y = case b of
 	MiddleButton -> ioStateT lockRef (toggle pos)
 	where
 	doRotation rotation
-		= ioStateT lockRef
-		-- TODO: this is horrible
-		. whenUnlocked (\_ -> liftIO $ readIORef gridRef >>= rotate rotation pos >>= writeIORef gridRef)
-		$ pos
+		= ioStateT lockRef . whenUnlocked pos . liftIO
+		$ readIORef gridRef >>= rotate rotation pos >>= writeIORef gridRef
 	pos = (round x, round y)
 
 drawGridLock gridRef lockRef = do
@@ -43,8 +41,7 @@ main = do
 	gridRef <- newIORef grid
 	lockRef <- newIORef def
 	da      <- viewportNew def {
-		-- TODO: this is horrible
-		stabilizationTime = liftM (maybe Already ExactTime . (\(AddMin v) -> v) . stable) (readIORef gridRef),
+		stabilizationTime = liftM (fromStableTime . stable) (readIORef gridRef),
 		draw     = drawGridLock gridRef lockRef,
 		click    = clickGrid    gridRef lockRef,
 		position = Position {

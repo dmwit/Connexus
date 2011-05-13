@@ -1,10 +1,11 @@
+-- boilerplate {{{1
 {-# LANGUAGE NoImplicitPrelude #-}
 
 module Graph2 where
 
+import Bounds
 import Interval (closed, openRight)
-import Life hiding (stable)
-import qualified Life
+import Life
 
 import Control.Monad
 import Data.Default
@@ -13,13 +14,12 @@ import Data.Monoid
 import Prelude hiding (lookup)
 import qualified Data.Map as M
 
+-- Edge and Graph data types {{{1
 data Edge time = Edge {
 	delay :: time,
 	life  :: Life time,
 	signalCache :: Life time
 	} deriving (Eq, Ord, Show, Read)
-
--- TODO: cache this in Edge itself?
 propogation e = stripe (delay e) (life e)
 
 data Graph nodeId time = Graph {
@@ -28,6 +28,7 @@ data Graph nodeId time = Graph {
 	} deriving (Eq, Ord, Show, Read)
 instance Default (Graph nodeId time) where def = Graph def def
 
+-- utility functions for working with a nested Map {{{1
 findWithDef :: (Ord k, Default a) => k -> Map k a -> a
 findWithDef = M.findWithDefault def
 
@@ -40,6 +41,11 @@ adjust :: (Ord k1, Ord k2) => (v -> v) -> k1 -> k2 -> Map k1 (Map k2 v) -> Map k
 insert   k1 k2 v = flip (M.unionWith (M.unionWith (flip const))) (M.singleton k1 (M.singleton k2 v))
 lookup   k1 k2   = M.lookup k1 >=> M.lookup k2
 adjust f k1 k2   = M.adjust (M.adjust f k2) k1
+
+-- node operations {{{1
+-- optimization idea: cache these
+querySignals :: (Ord nodeId, Ord time) => Graph nodeId time -> Map nodeId (Life time)
+querySignals = M.mapKeysWith union head . M.delete [] {- defensive programming -} . nodes
 
 -- TODO: parallelize this, or rather, incrementalize this, and make a separate
 -- thread for doing the incremental computations (to keep the interface snappy)
@@ -85,6 +91,7 @@ addEdge        :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nod
 subEdge        :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 initializeEdge :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 
+-- edge operations {{{1
 -- easily one of the most complicated functions in here, used for adding to or subtracting from an edge's lifetime
 -- mod: how to change the signal appearing at the target node in observation of the change to this edge
 -- overlap: how to compute which part of the change to the lifetime is actually a change, and which is shared with the old edge
@@ -114,29 +121,28 @@ initializeEdge delay source target graph = insertInto cleanGraph where
 	cleanGraph = maybe id (\e -> subEdge' (life e) source target) oldEdge graph
 	insertInto = \g -> g { edges = insert source target (Edge delay empty empty) (edges g) }
 
--- even though all the nodes may have stabilized, the entire graph may not have
--- stabilized yet if there's still a signal traveling on its last leg in a
--- cycle; to account for this, simply conservatively delay the stable time of
--- the nodes by the maximal delay of any edge in the graph
-stable g = maxEdge g +. maxNode g where
-	maxNode = mconcat . map Life.stable . M.elems . nodes
-	maxEdge = maximum . (0:) . map delay . concatMap M.elems . M.elems . edges
-
--- TODO: reverse the meaning of 0 and 1 so that we don't have to do a (-.) --
--- and hence don't have to do a reverse
-scaleSignal :: (Ord time, Num time, Fractional time) => time -> Edge time -> Life time
-scaleSignal now edge = (./ delay edge) . (now -.) . intersect live . signalCache $ edge where
-	live = intersect (singleton (closed (now - delay edge) now)) (contiguous now (life edge))
-
--- TODO: inline this
-queryEdge' :: (Ord nodeId, Ord time) => nodeId -> nodeId -> Graph nodeId time -> Life time
-queryEdge' source target = findWithDef source . M.mapKeysWith union head . M.filterWithKey valid . nodes where
-	valid  k _ = take 1 k == [source] && take 1 (drop 1 k) /= [target]
-	-- @valid@ makes sure we don't send a signal right back to the node it came from
-
-recache :: (Ord nodeId, Ord time) => nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
-recache source target graph = graph { edges = adjust (\edge -> edge { signalCache = queryEdge' source target graph }) source target (edges graph) }
-
+-- optimization idea: reverse the meaning of 0 and 1 so that we don't have to
+-- do a (-.) and hence don't have to do a reverse
 queryEdge :: (Ord nodeId, Ord time, Num time, Fractional time) =>
 	time -> nodeId -> nodeId -> Graph nodeId time -> Life time
-queryEdge now source target = maybe empty (scaleSignal now) . lookup source target . edges
+queryEdge now source target = maybe empty scale . lookup source target . edges where
+	scale edge = (now -. intersect (live edge) (signalCache edge)) ./ delay edge
+	live  edge = intersect (singleton (closed (now - delay edge) now)) (contiguous now (life edge))
+
+-- misc {{{1
+instance Stable (Graph nodeId) where
+	-- even though all the nodes may have stabilized, the entire graph may not have
+	-- stabilized yet if there's still a signal traveling on its last leg in a
+	-- cycle; to account for this, simply conservatively delay the stable time of
+	-- the nodes by the maximal delay of any edge in the graph
+	stable g = fmap (maxEdge g +) (maxNode g) where
+		maxNode = mconcat . map stable . M.elems . nodes
+		maxEdge = maximum . (0:) . map delay . concatMap M.elems . M.elems . edges
+
+-- optimization idea: instead of recomputing the whole damn lifetime, just incrementally update it
+recache :: (Ord nodeId, Ord time) => nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
+recache source target graph = graph { edges = adjust update source target (edges graph) } where
+	update  e = e { signalCache = signal }
+	signal    = findWithDef source . M.mapKeysWith union head . M.filterWithKey valid . nodes $ graph
+	valid k _ = take 1 k == [source] && take 1 (drop 1 k) /= [target]
+	-- @valid@ makes sure we don't send a signal right back to the node it came from

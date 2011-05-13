@@ -28,3 +28,6 @@ x <.  y = mixCompare x y == LT
 x >=. y = mixCompare x y /= LT
 x <=. y = mixCompare x y /= GT
 x ==. y = mixCompare x y == EQ
+
+class Stable f where
+	stable :: (Ord time, Num time) => f time -> AddMin time

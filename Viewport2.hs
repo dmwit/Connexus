@@ -6,10 +6,12 @@ module Viewport2 (
 	Dimension(..),
 	AnimationState(..),
 	Viewport(..),
+	fromStableTime,
 	viewportNew
 ) where
 
 import Misc
+import Bounds
 
 import Control.Monad
 import Data.Default
@@ -128,6 +130,10 @@ conversion posRef = time >>= flip conversionAt posRef
 -- }}}
 -- event handling {{{
 -- timeouts {{{
+fromStableTime :: AddMin Double -> Stabilization
+fromStableTime (AddMin Nothing)  = Already
+fromStableTime (AddMin (Just t)) = ExactTime t
+
 stableTimeout :: DrawingArea -> IORef Stabilization -> IO Bool
 stableTimeout da stableRef = do
 	widgetQueueDraw da

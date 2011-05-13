@@ -1,3 +1,4 @@
+* cache the background to avoid rerendering it all the time
 * clicking near the border on connections that extend out of their box
 * somehow indicate the boundaries between the pieces / grid spaces
 * do something when they win =)

@@ -2,14 +2,14 @@
 module Life (
 	Life(), unLife,
 	empty, singleton,
-	isEmpty, stable, contains,
+	isEmpty, contains,
 	union, unions, diff, intersect, stripe,
 	contiguous,
-	(+.), (-.), (*.), (/.), (.+), (.-), (.*), (./)
+	NumLike(..)
 	) where
 
 import Bounds
-import Interval (start, end, unsafeStart, unsafeEnd, hasWidth, Interval(..))
+import Interval (start, end, unsafeStart, unsafeEnd, hasWidth, Interval(..), NumLike(..))
 import qualified Interval as I
 
 import Control.Monad
@@ -33,10 +33,9 @@ empty = Life []
 singleton i = Life (strip [i])
 isEmpty = (empty ==)
 
--- TODO: typeclass this
 -- Invariants (1) and (2) ensure that if there are any intervals, the first one
 -- has the highest stable time.
-stable = mconcat . take 1 . map I.stable . unLife
+instance Stable Life where stable = mconcat . take 1 . map stable . unLife
 
 -- Reinstate invariant (2). Preserves invariant (3).
 reorder = sortBy (flip $ comparing end)
@@ -105,25 +104,10 @@ stripe t (Life is)
 	| t >= 0 = Life (strip    [Interval (fmap (+        t) (start i), end i) | i <- is])
 	| t <  0 = Life (collapse [Interval (fmap (subtract t) (start i), end i) | i <- is])
 
--- TODO: typeclass this
--- the dot goes on the unusual (i.e. the Life) side
-infixl 6 .+
-infixl 6 +.
-infixl 6 .-
-infixl 6 -.
-infixl 7 .*
-infixl 7 *.
-infixl 7 ./
-infixl 7 /.
-
-(.+)   = (I..+)
-(.-)   = (I..-)
-(+.)   = (I.+.)
-i .* t = t *. i
-i ./ t = i .* recip t
-t -. i = t +. (-1) *. i
-t *. (Life is)
-	| t  < 0 = Life . reverse  . map (t I.*.) $ is
-	| t  > 0 = Life            . map (t I.*.) $ is
-	| t == 0 = Life . collapse . map (t I.*.) $ is
-t /. (Life is) = t *. Life (map (1 I./.) is)
+instance NumLike Life where
+	t +. l = fmap (t+) l
+	t *. (Life is)
+		| t  < 0 = Life . reverse  . map (t *.) $ is
+		| t  > 0 = Life            . map (t *.) $ is
+		| t == 0 = Life . collapse . map (t *.) $ is
+	t /. (Life is) = t *. Life (map (1 /.) is)

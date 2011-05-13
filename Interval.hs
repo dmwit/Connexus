@@ -2,10 +2,10 @@
 module Interval (
 	Interval(..), start, end, unsafeStart, unsafeEnd,
 	open, openLeft, openRight, closed,
-	isEmpty, isPoint, hasWidth, stable,
+	isEmpty, isPoint, hasWidth,
 	contains, hasPoint, overlaps,
 	intersect, union,
-	(.+), (.-), (.*), (./), (+.), (-.), (*.), (/.)
+	NumLike(..),
 	) where
 
 import Bounds
@@ -35,7 +35,8 @@ closed    b e = Interval (return b, return e)
 isEmpty  i = start i >.  end i
 isPoint  i = start i ==. end i
 hasWidth i = start i <.  end i
-stable   i = maybe (start i) return (unsafeEnd i)
+
+instance Stable Interval where stable i = maybe (start i) return (unsafeEnd i)
 
 -- Beware: this may do strange things with empty intervals.
 i1 `contains` i2 = intersect i1 i2 == i2
@@ -54,7 +55,6 @@ unsafeUnion (i1@(Interval (b1, e1)) : i2@(Interval (_, e2)) : is)
 	| otherwise        = i1 : unsafeUnion (i2 : is)
 unsafeUnion is = is
 
--- the dot goes on the unusual (i.e. the Interval) side
 infixl 6 .+
 infixl 6 +.
 infixl 6 .-
@@ -64,12 +64,23 @@ infixl 7 *.
 infixl 7 ./
 infixl 7 /.
 
-i .+ t = t +. i
-i .* t = t *. i
-i .- t = fmap (subtract t) i
-i ./ t = i .* recip t
-t +. i = fmap (t+) i
-t -. i = t +. (-1) *. i
-t *. i | t >= 0 = fmap (t*) i
-t *. (Interval (AddMin b, AddMax e)) = fmap (t*) (Interval (AddMin e, AddMax b))
-t /. (Interval (AddMin b, AddMax e)) = t *. fmap recip (Interval (AddMin e, AddMax b))
+class NumLike f where
+	-- the dot goes on the unusual (i.e. the Interval) side
+	(.+), (.-), (.*) :: (Ord a, Num a) => f a -> a -> f a
+	(+.), (-.), (*.) :: (Ord a, Num a) => a -> f a -> f a
+	(./) :: (Ord a, Fractional a) => f a -> a -> f a
+	(/.) :: (Ord a, Fractional a) => a -> f a -> f a
+
+	f .+ a = a +. f
+	f .* a = a *. f
+	f .- a = f .+ negate a
+	f ./ a = f .* recip a
+	a +. f = f .+ a
+	a *. f = f .* a
+	a -. f = a +. (-1) *. f
+
+instance NumLike Interval where
+	t +. i = fmap (t+) i
+	t *. i | t >= 0 = fmap (t*) i
+	t *. (Interval (AddMin b, AddMax e)) = fmap (t*) (Interval (AddMin e, AddMax b))
+	t /. (Interval (AddMin b, AddMax e)) = t *. fmap recip (Interval (AddMin e, AddMax b))
