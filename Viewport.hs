@@ -155,7 +155,6 @@ setStableTime da delay stableRef stable = do
 	      (timeoutAdd (stableTimeout da stableRef) delay)
 -- }}}
 -- expose {{{
--- TODO: try rendering with OpenGL instead and see what happens
 exposeViewport :: IORef Position -> Render a -> EventM b Bool
 exposeViewport posRef draw = do
 	dw      <- eventWindow
