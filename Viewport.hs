@@ -251,9 +251,6 @@ reposition da posRef old new = do
 	liftIO $ widgetQueueDraw da
 -- }}}
 -- }}}
--- TODO: fix markup in documentation of Graphics.UI.Gtk.Abstract.Widget.motionNotifyEvent
---       figure out what "This may be @Nothing@" means in documentation of G.U.G.A.W.widgetGetDrawWindow
---       fix typo in GUGAW.widgetDelEvents ("disconected" -> "disconnected")
 viewportNew :: Viewport -> IO DrawingArea
 viewportNew v = do
 	da        <- drawingAreaNew
