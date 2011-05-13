@@ -1,277 +1,211 @@
--- boilerplate {{{
-{-# LANGUAGE FlexibleContexts, NoMonomorphismRestriction #-}
-module Grid where
+-- boilerplate {{{1
+{-# LANGUAGE NoMonomorphismRestriction #-}
+module Grid (
+	Grid(..), randomGrid, unsafeStaticGrid, update, rotateGridRandomly, signal, rotate, stable
+	) where
 
+import Bounds
 import Direction
 import Graph
-import Interval
+import Interval (unsafeStart, unsafeEnd)
+import Life
 import Misc
-import StrokeSet
 
+import Control.Monad
+import Control.Monad.Instances
 import Control.Monad.Random
-import Control.Monad.State
-import Data.Array
+import Control.Monad.Trans
 import Data.Array.IO
 import Data.Default
-import Data.Function
-import Data.IntMap (IntMap)
-import Data.List
+import Data.List hiding (intersect, union)
 import Data.Maybe
-import Data.Map (Map)
+import Data.Ord
 import Graphics.Rendering.Cairo hiding (rotate)
 
-import qualified Data.IntMap as IntMap
-import qualified Data.Map    as Map
--- }}}
--- types {{{
-type NodeId     = Int
-type EdgeId     = Int
-data EdgeType   = Incoming | Outgoing deriving (Eq, Ord, Show, Read)
-data Connection = Connection {
-	direction :: Direction,
-	incoming, outgoing :: EdgeId
-	} deriving (Eq, Ord, Show, Read)
+import qualified Data.Map as M
 
-data Grid = Grid {
-	width  :: Int,
-	height :: Int,
-	graph  :: Graph NodeId EdgeId Double,
-	points :: Array Point NodeId,
-	nodeBackend :: Array (Point, Direction) NodeId,
-	nodeShape   :: IOArray Point [Connection],
-	edgeShape   :: IntMap (EdgeType, (Point, Direction))
+-- Node and Piece types {{{1
+data Node a
+	= Lattice { x, y :: a }
+	| RightOf { x, y :: a }
+	| Above   { x, y :: a }
+	deriving (Eq, Ord, Show, Read)
+
+data Piece = Piece { north, east, south, west :: Bool }
+	deriving (Eq, Ord, Show, Read)
+instance Default Piece where def = Piece False False False False
+
+-- utility functions {{{1
+neighbor North (x, y) = Above    x      y
+neighbor East  (x, y) = RightOf  x      y
+neighbor South (x, y) = Above    x     (y + 1)
+neighbor West  (x, y) = RightOf (x - 1) y
+lattice        (x, y) = Lattice  x      y
+
+both f s t = f s t . f t s
+
+piece   :: (Direction -> Bool) -> Piece
+unPiece :: Piece -> (Direction -> Bool)
+piece   f       = Piece (f North) (f East) (f South) (f West)
+unPiece p North = north p
+unPiece p East  = east  p
+unPiece p South = south p
+unPiece p West  = west  p
+
+instance Oriented Piece where
+	clockwise        = liftM4 Piece west north east south
+	counterclockwise = liftM4 Piece east south west north
+	aboutFace        = liftM4 Piece south west north east
+
+set    d p = piece (\d' ->  d == d'  || unPiece p d')
+unset  d p = piece (\d' ->  d /= d'  && unPiece p d')
+toggle d p = piece (\d' -> (d == d') /= unPiece p d')
+
+-- Grid type {{{1
+data Grid a t = Grid {
+	pieces :: IOArray (a,a) Piece,
+	graph  :: Graph (Node a) t -- TODO: IORef this
 	}
 -- }}}
 defaultDelay = 0.05
--- creating {{{
-blankGridComponents w h = do
-	backend <- newArray (((0, 0), minBound), ((w, h), maxBound)) maxBound
-	nodeIds <- liftM (listArray ((0, 0), (w,h))) (replicateM ((w+1) * (h+1)) addNode)
-	forM_ (range (0, w)) $ \x -> addNode >>= writeArray backend ((x, 0), North)
-	forM_ (range (0, h)) $ \y -> addNode >>= writeArray backend ((0, y), West )
-	forM_ (range ((0, 0), (w, h))) $ \(x, y) -> do
-		east  <- addNode
-		south <- addNode
-		writeArray backend ((x, y), East ) east
-		writeArray backend ((x, y), South) south
-		when (x < w) (writeArray backend ((x+1, y), West ) east )
-		when (y < h) (writeArray backend ((x, y+1), North) south)
-	frozen <- unsafeFreeze (backend :: IOArray (Point, Direction) NodeId)
-	shape  <- newArray ((0, 0), (w, h)) []
-	return (nodeIds, frozen, shape)
-
-connect shape p d i o = do
-	conns <- readArray shape p
-	writeArray shape p (Connection d i o : conns)
-
--- assumptions: non-empty map, each key is in the first quadrant, and each value is actually a non-empty set
-unsafeStaticGrid :: [(Point, [Direction])] -> IO Grid
-unsafeStaticGrid es = flip evalStateT def $ do
-	(nodeIds, backend, shape) <- blankGridComponents w h
-	esss <- forM es $ \(p, ds) -> do
-		let n = nodeIds ! p
-		when (p == (0, 0)) $ time >>= signalGraph n . openRight . (+3)
-		forM ds $ \d -> do
-			let border = backend ! (p, d)
-			incoming <- addEdge border n defaultDelay
-			outgoing <- addEdge n border defaultDelay
-			connect shape p d incoming outgoing
-			return [(incoming, (Incoming, (p, d))), (outgoing, (Outgoing, (p, d)))]
-
-	this <- get
-	return Grid {
-		width  = w,
-		height = h,
-		graph  = this,
-		points = nodeIds,
-		nodeBackend = backend,
-		nodeShape   = shape,
-		edgeShape   = IntMap.fromList . concat . concat $ esss
-		}
+-- creation {{{1
+grid :: (Ix a, Num a, Fractional t, Ord t, MonadIO m) =>
+	IOArray (a, a) Piece -> m (Grid a t)
+grid array = liftIO $ do
+	now  <- time
+	xyps <- getAssocs array
+	return (Grid array (newGraph now xyps))
 	where
-	w = maximum (map (fst . fst) es)
-	h = maximum (map (snd . fst) es)
+	newGraph now xyps = foldr ($) def (xyps >>= inits now)
+	inits now (pos, piece) =
+		onNeighbors (unPiece piece) (addEdge now)                 pos ++
+		onNeighbors (const True)    (initializeEdge defaultDelay) pos
+	onNeighbors pred f pos = do
+		d <- [minBound .. maxBound]
+		guard (pred d)
+		return (both f (lattice pos) (neighbor d pos))
+
+-- TODO: remove this legacy name after completing the merge with all the "2"
+-- versions of files
+unsafeStaticGrid = staticGrid
+
+staticGrid :: [(Point, [Direction])] -> IO (Grid Int Double)
+staticGrid [] = newArray ((0,0),(0,0)) def >>= grid
+staticGrid pds = do
+	array <- newArray ((minX, minY), (maxX, maxY)) def
+	forM_ pds $ \(p, ds) -> forM_ ds $ \d -> modifyArray array (toggle d) p
+	grid array
+	where
+	[minX, minY, maxX, maxY] = [f (map (g . fst) pds) | f <- [minimum, maximum], g <- [fst, snd]]
 
 uniform = fromList . flip zip (repeat 1)
-inBound x w = 0 <= x && x < w
 
 randomGrid w h = do
-	(nodeIds, backend, shape) <- blankGridComponents (w-1) (h-1)
-	origin <- getRandomR ((0, 0), (w-1, h-1))
-	es     <- randomGrid' backend nodeIds shape def 0 [origin]
-	this   <- get
-
-	return Grid {
-		width  = w,
-		height = h,
-		graph  = this,
-		points = nodeIds,
-		nodeBackend = backend,
-		nodeShape   = shape,
-		edgeShape   = es
-	}
+	array  <- newArray bounds def
+	origin <- getRandomR bounds
+	fill array 0 [origin]
+	grid array
 	where
-	randomGrid' backend nodeIds nodeShape = randomGrid'' where
-		randomGrid'' edgeShape _ [] = return edgeShape
-		randomGrid'' edgeShape n ps = do -- invariant: n = length ps - 1
-			i <- getRandomR (0, n)
-			let p@(x, y) = ps !! i
-			already  <- liftM (map direction) $ readArray nodeShape p
-			possible <- flip filterM [minBound..maxBound] $ \d ->
-				if   inBound (x + dx d) w && inBound (y + dy d) h
-				then liftM null (readArray nodeShape (x + dx d, y + dy d))
-				else return False
-			case (already, possible) of
-				(_:_:_:_, _ ) -> randomGrid'' edgeShape (n-1) (delete p ps)
-				(   _   , []) -> randomGrid'' edgeShape (n-1) (delete p ps)
-				(   _   , ds) -> do
-					d <- uniform ds
-					edgeShape <- link edgeShape p d
-					edgeShape <- link edgeShape (x + dx d, y + dy d) (aboutFace d)
-					randomGrid'' edgeShape (n+1) ((x + dx d, y + dy d) : ps)
+	fill array n []   = return ()
+	fill array n poss = do -- invariant: n = length poss - 1
+		i <- getRandomR (0, n)
+		let pos@(x, y) = poss !! i
+		already  <- directions array pos
+		possible <- flip filterM [minBound .. maxBound] $ \d ->
+			if   inRange bounds (step d pos)
+			then liftM null (directions array (step d pos))
+			else return False
+		case (already, possible) of
+			(_:_:_:_, _ ) -> fill array (n-1) (delete pos poss)
+			(   _   , []) -> fill array (n-1) (delete pos poss)
+			(   _   , ds) -> do
+				d <- uniform ds
+				modifyArray array (set               d)         pos
+				modifyArray array (set . aboutFace $ d) (step d pos)
+				fill array (n+1) (step d pos : poss)
 
-		link edgeShape p d = do
-			let np = nodeIds ! p
-			let nd = backend ! (p, d)
-			i <- addEdge nd np defaultDelay
-			o <- addEdge np nd defaultDelay
-			connect nodeShape p d i o
-			return . IntMap.insert i (Incoming, (p, d))
-			       . IntMap.insert o (Outgoing, (p, d))
-			       $ edgeShape
--- }}}
--- rendering {{{
-type DStrokeSet = StrokeSet Double Double
-gridStrokes, signalStrokes :: Double -> Grid -> DStrokeSet
+	bounds = ((0,0), (w-1,h-1))
+	directions array pos = do
+		p <- readArray array pos
+		return . filter (unPiece p) $ [minBound .. maxBound]
 
-gridStrokes = strokeAll (\_ _ p d -> strokeDirection p d 0 1)
-signalStrokes now grid = strokeAll stroke now grid where
-	reverse Incoming = (1 -.)
-	reverse Outgoing = id
-	strokeInterval p d i = strokeDirection p d (fromJust . unsafeStart $ i) (fromJust . unsafeEnd $ i)
+-- rendering {{{1
+x' l@(RightOf {}) = fromIntegral (x l) + 0.5
+x' l              = fromIntegral (x l)
+y' l@(Above   {}) = fromIntegral (y l) - 0.5
+y' l              = fromIntegral (y l)
 
-	stroke eid edgeType point direction
-		= flip (foldr (strokeInterval point direction . reverse edgeType))
-		. queryEdge eid now
-		. graph
-		$ grid
+signalEitherDirection s t l = forM_ (unLife l) $ \i -> do
+	moveTo (x' s + fromMaybe 0 (unsafeStart i) * (x' t - x' s))
+	       (y' s + fromMaybe 0 (unsafeStart i) * (y' t - y' s))
+	lineTo (x' s + fromMaybe 1 (unsafeEnd   i) * (x' t - x' s))
+	       (y' s + fromMaybe 1 (unsafeEnd   i) * (y' t - y' s))
 
--- optimization idea: only iterate over the edgeShape, rather than all edges in
--- the graph (since we only draw edges in the edgeShape anyway)
-strokeAll :: (EdgeId -> EdgeType -> Point -> Direction -> DStrokeSet -> DStrokeSet) ->
-             Double -> Grid -> DStrokeSet
-strokeAll f now grid = foldr stroke def . Map.assocs . edges . graph $ grid where
-	stroke (i, e) = case (lifetime e `hasPoint` now, IntMap.lookup i $ edgeShape grid) of
-		(True, Just (t, (p, d))) -> f i t p d
-		_ -> id
+backgroundPath   s t _ = moveTo (x' s) (y' s) >> lineTo (x' t) (y' t)
+singleSignal now s t g = signalEitherDirection s t (queryEdge now s t g `union`     (1 -. queryEdge now t s g))
+doubleSignal now s t g = signalEitherDirection s t (queryEdge now s t g `intersect` (1 -. queryEdge now t s g))
 
-strokeDirection :: Point -> Direction -> Double -> Double -> DStrokeSet -> DStrokeSet
-strokeDirection (x', y') d b' e' = case d of
-	North -> strokeVertical   x (y - e) (y - b)
-	East  -> strokeHorizontal y (x + b) (x + e)
-	South -> strokeVertical   x (y + b) (y + e)
-	West  -> strokeHorizontal y (x - e) (x - b)
+forPoints_ :: (Ix i, MonadIO m) => IOArray i e -> (i -> e -> m ()) -> m ()
+forPoints_ array f = liftIO (getAssocs array) >>= mapM_ (uncurry f)
+
+forLiveEdges_ :: (Ix a, Num a, MonadIO m) =>
+	(Node a -> Node a -> Graph (Node a) t -> m ()) -> Grid a t -> m ()
+forLiveEdges_ f grid =
+	forPoints_ (pieces grid) $ \pos piece ->
+		forM_ [minBound .. maxBound] $ \dir ->
+			when (unPiece piece dir) (f (lattice pos) (neighbor dir pos) (graph grid))
+
+markTerminals now signals pos@(x',y') piece = when terminal $ do
+	if lit then setSourceRGB 0 0.9 0 else setSourceRGB 0 0.3 0
+	moveTo (x + 0.1) (y + 0.1)
+	arc x y 0.1 0 (2 * pi)
+	fill
 	where
-	[x, y] = map fromIntegral [x', y']
-	[b, e] = map (/2) [b', e']
-
-renderStrokeSet init edge = sequence_ . zipWith renderGroup [0..] . strokes where
-	renderGroup n es = do
-		init n
-		mapM_ (edge n) es
-		stroke
-
-renderInitGrid 1 = setSourceRGB 0 0 0
-renderInitGrid _ = setSourceRGB 1 0 0
-renderEdgeGrid _ ((xb, yb), (xe, ye)) = moveTo xb yb >> lineTo xe ye
-renderInitSignal 0 = setSourceRGB 0 0 0.6
-renderInitSignal 1 = setSourceRGB 0 0 1
-renderInitSignal _ = setSourceRGB 1 0 0
-renderEdgeSignal _ ((xb, yb), (xe, ye)) = moveTo xb yb >> lineTo xe ye -- TODO
-
-renderEndpoints now grid poss = do
-	setLineWidth 0
-	mark 0.3 unlit
-	mark 0.9 lit
-	where
-	litTimes pos = queryNode (points grid ! pos) (graph grid)
-	isLit    pos = any (`hasPoint` now) (litTimes pos)
-	(lit, unlit) = partition isLit poss
-	circle' x y  = moveTo (x + 0.1) (y + 0.1) >> arc x y 0.1 0 (2 * pi)
-	circle       = uncurry (circle' `on` fromIntegral)
-	mark g poss  = setSourceRGB 0 g 0 >> mapM_ circle poss >> fill
+	terminal = [() | dir <- [north, east, south, west], dir piece] == [()]
+	(x, y)   = (fromIntegral x', fromIntegral y')
+	lit      = fromMaybe empty (M.lookup (lattice pos) signals) `contains` now
 
 update grid = do
-	now       <- time
-	endpoints <- filterM (liftM (null . drop 1) . readArray (nodeShape grid))
-	                     (range ((0, 0), (width grid - 1, height grid - 1)))
-	return $ do
-		setLineWidth 0.4
-		setLineCap LineCapRound
-		renderStrokeSet renderInitGrid   renderEdgeGrid   (gridStrokes   now grid)
-		renderStrokeSet renderInitSignal renderEdgeSignal (signalStrokes now grid)
-		renderEndpoints now grid endpoints
+	now <- time
+	setLineWidth 0.4
+	setLineCap LineCapRound
+	setSourceRGB  0 0 0
+	forLiveEdges_ backgroundPath     grid >> stroke
+	setSourceRGBA 0 0 1 0.6
+	forLiveEdges_ (singleSignal now) grid >> stroke
+	forLiveEdges_ (doubleSignal now) grid >> stroke
+	forPoints_ (pieces grid) (markTerminals now (querySignals (graph grid)))
+-- modification {{{1
+-- TODO: don't return, just update
+rotate rotation pos grid = do
+	bounds <- getBounds (pieces grid)
+	if inRange bounds pos
+		then unsafeRotate rotation pos grid
+		else return grid
 
-stable = Graph.stable . graph
--- }}}
--- modifying {{{
-onGraph :: MonadState Grid m => State (Graph NodeId EdgeId Double) a -> m a
-onGraph m = do
-	grid <- get
-	let (a, graph') = runState m (graph grid)
-	put grid { graph = graph' }
-	return a
-
-signal :: MonadState Grid m => Point -> Double -> m ()
-signal p t = do
-	nodeIds <- gets points
-	onGraph (signalGraph (nodeIds ! p) (openRight t))
-
-rotatePointRandomly pos = do
-	shape    <- gets nodeShape
-	ds       <- liftM (map direction) (readArray shape pos)
-	rotation <- uniform $ case map aboutFace ds \\ ds of
-		[] -> [id, clockwise, counterclockwise]
-		_  -> [id, clockwise, counterclockwise, aboutFace]
-	rotate rotation pos
-
-rotateGridRandomly = do
-	w <- gets width
-	h <- gets height
-	mapM_ rotatePointRandomly (range ((0, 0), (w-1, h-1)))
-
--- TODO: break up from being a monolithic function
-rotate rotation pos = do
-	backend <- gets nodeBackend
-	nodes   <- gets nodeShape
-	bounds  <- getBounds nodes
-	when (inRange bounds pos) $ do
-		now           <- time
-		connections   <- readArray nodes pos
-		nodeCenterId  <- gets ((!pos) . points)
-		let [k, f, e] =  sequence [keep, fix, end] connections
-		    fds       =  map (rotation . direction) f
-		    nodeIds   =  map (\d -> backend ! (pos, d)) fds
-
-		(incoming, outgoing) <- onGraph $ do
-			mapM_ (flip deleteEdge now . incoming) e
-			mapM_ (flip deleteEdge now . outgoing) e
-			incoming <- mapM (\nodeId -> startEdge nodeId nodeCenterId defaultDelay now) nodeIds
-			outgoing <- mapM (\nodeId -> startEdge nodeCenterId nodeId defaultDelay now) nodeIds
-			return (incoming, outgoing)
-		
-		oldEdgeShape <- gets edgeShape
-		modify (\grid -> grid { edgeShape
-			= updateEdgeShape Incoming incoming fds
-			. updateEdgeShape Outgoing outgoing fds
-			$ oldEdgeShape
-			})
-
-		writeArray nodes pos (k ++ zipWith3 Connection fds incoming outgoing)
+-- TODO: don't return, just update
+unsafeRotate rotation pos grid = do
+	now <- time
+	p   <- readArray (pieces grid) pos
+	writeArray (pieces grid) pos (rotation p)
+	return grid { graph = rotate' now p (graph grid) }
 	where
-	isRotationOf c c' = direction c == rotation (direction c')
-	keep = (\cs c ->      any (c `isRotationOf`) cs ) >>= filter
-	fix  = (\cs c -> not (any (`isRotationOf` c) cs)) >>= filter
-	end  = (\cs c -> not (any (c `isRotationOf`) cs)) >>= filter
-	updateEdgeShape t ids ds = flip (foldr (\(n, d) -> IntMap.insert n (t, (pos, d)))) (zip ids ds)
--- }}}
+	correct' True False = subEdge
+	correct' False True = addEdge
+	correct'   _    _   = \now s t -> id
+	correct now d b1 b2 = both (correct' b1 b2 now) (lattice pos) (neighbor d pos)
+	corrections now p   = [correct now d (unPiece p d) (unPiece (rotation p) d) | d <- [minBound .. maxBound]]
+	rotate'     now p   = foldr (.) id (corrections now p)
+
+-- TODO: should we call "time" only once here?
+rotateGridRandomly grid = getBounds (pieces grid) >>= foldM unsafeRotatePointRandomly grid . range
+unsafeRotatePointRandomly grid pos = do
+	rotation <- uniform [id, clockwise, aboutFace, counterclockwise]
+	unsafeRotate rotation pos grid
+
+-- TODO: don't return, just update
+signal pos grid = do
+	now <- time
+	return grid { graph = addSignal (lattice pos) now (graph grid) }
+
+instance Stable (Grid a) where stable = stable . graph

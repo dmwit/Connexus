@@ -6,10 +6,12 @@ module Viewport (
 	Dimension(..),
 	AnimationState(..),
 	Viewport(..),
+	fromStableTime,
 	viewportNew
 ) where
 
 import Misc
+import Bounds
 
 import Control.Monad
 import Data.Default
@@ -36,7 +38,7 @@ data AnimationState
 
 data Viewport = Viewport {
 	stabilizationTime :: IO Stabilization,
-	draw              :: IO (Render ()),
+	draw              :: Render (),
 	click             :: MouseButton -> Double -> Double -> IO (),
 	position          :: Position,
 	delay             :: Int
@@ -128,6 +130,10 @@ conversion posRef = time >>= flip conversionAt posRef
 -- }}}
 -- event handling {{{
 -- timeouts {{{
+fromStableTime :: AddMin Double -> Stabilization
+fromStableTime (AddMin Nothing)  = Already
+fromStableTime (AddMin (Just t)) = ExactTime t
+
 stableTimeout :: DrawingArea -> IORef Stabilization -> IO Bool
 stableTimeout da stableRef = do
 	widgetQueueDraw da
@@ -150,18 +156,17 @@ setStableTime da delay stableRef stable = do
 -- }}}
 -- expose {{{
 -- TODO: try rendering with OpenGL instead and see what happens
-exposeViewport :: IORef Position -> IO (Render a) -> EventM b Bool
+exposeViewport :: IORef Position -> Render a -> EventM b Bool
 exposeViewport posRef draw = do
 	dw      <- eventWindow
 	con     <- conversion posRef
-	drawing <- liftIO draw
 	let
 		length     = pixelsPerWorldUnit con
 		(tlx, tly) = worldFromScreen con (0, 0)
 	liftIO . renderWithDrawable dw $ do
 		scale length length
 		translate (-tlx) (-tly)
-		drawing
+		draw
 	return True
 -- }}}
 -- zooming {{{

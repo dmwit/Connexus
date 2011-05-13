@@ -1,6 +1,7 @@
 -- boilerplate {{{
+import Bounds
 import Direction
-import Grid hiding (width, height)
+import Grid
 import Lock
 import Misc
 import Viewport
@@ -20,15 +21,13 @@ clickGrid gridRef lockRef b x y = case b of
 	MiddleButton -> ioStateT lockRef (toggle pos)
 	where
 	doRotation rotation
-		= ioStateT lockRef
-		. whenUnlocked (ioStateT gridRef . rotate rotation)
-		$ pos
+		= ioStateT lockRef . whenUnlocked pos . liftIO
+		$ readIORef gridRef >>= rotate rotation pos >>= writeIORef gridRef
 	pos = (round x, round y)
 
 drawGridLock gridRef lockRef = do
-	gridRender <- readIORef gridRef >>= Grid.update
-	lock       <- readIORef lockRef
-	return (gridRender >> Lock.update lock)
+	liftIO (readIORef gridRef) >>= Grid2.update
+	liftIO (readIORef lockRef) >>= Lock.update
 
 main = do
 	initGUI
@@ -37,14 +36,12 @@ main = do
 		[[(w, "")], [(h, "")]] -> (w, h)
 		_ -> (11, 11)
 	window  <- windowNew
-	grid    <- evalStateT (randomGrid w h) def
-	--grid    <- unsafeStaticGrid ([((0,y),[North,East,South]) | y <- [0..10]] ++ [((1,y),[North,West,South]) | y <- [0..10]])
+	grid    <- randomGrid w h >>= rotateGridRandomly >>= signal (w `div` 2, h `div` 2)
+	--grid    <- unsafeStaticGrid ([((0,y),[North,East,South]) | y <- [0..10]] ++ [((1,y),[North,West,South]) | y <- [0..10]]) >>= signal (0,0)
 	gridRef <- newIORef grid
 	lockRef <- newIORef def
-	ioStateT gridRef $ rotateGridRandomly >> time >>= signal (w `div` 2, h `div` 2)
-	--ioStateT gridRef $ time >>= signal (0,0)
 	da      <- viewportNew def {
-		stabilizationTime = liftM (maybe Already ExactTime . stable) (readIORef gridRef),
+		stabilizationTime = liftM (fromStableTime . stable) (readIORef gridRef),
 		draw     = drawGridLock gridRef lockRef,
 		click    = clickGrid    gridRef lockRef,
 		position = Position {
