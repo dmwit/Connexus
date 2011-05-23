@@ -179,9 +179,9 @@ update grid = do
 -- modification {{{1
 rotate rotation pos grid = do
 	bounds <- getBounds (pieces grid)
-	when (inRange bounds pos) (unsafeRotate rotation pos grid)
+	when (inRange bounds pos) (unsafeRotate time rotation pos grid)
 
-unsafeRotate rotation pos grid = do
+unsafeRotate time rotation pos grid = do
 	now <- time
 	p   <- readArray (pieces grid) pos
 	writeArray (pieces grid) pos (rotation p)
@@ -194,10 +194,13 @@ unsafeRotate rotation pos grid = do
 	corrections now p   = [correct now d (unPiece p d) (unPiece (rotation p) d) | d <- [minBound .. maxBound]]
 	rotate'     now p   = foldr (.) id (corrections now p)
 
--- TODO: should we call "time" only once here?
-rotateGridRandomly grid = getBounds (pieces grid) >>= mapM_ (unsafeRotatePointRandomly grid) . range
-unsafeRotatePointRandomly grid pos = do
+rotateGridRandomly grid = do
+	now    <- time
+	bounds <- getBounds (pieces grid)
+	mapM_ (unsafeRotatePointRandomly now grid) (range bounds)
+
+unsafeRotatePointRandomly now grid pos = do
 	rotation <- uniform [id, clockwise, aboutFace, counterclockwise]
-	unsafeRotate rotation pos grid
+	unsafeRotate (return now) rotation pos grid
 
 signal pos grid = time >>= modifyIORef (graph grid) . addSignal (lattice pos)
