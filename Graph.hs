@@ -77,8 +77,8 @@ propogateSignal' update path@(~(source:rest)) lifetime graph
 	graph'        = graph { nodes = update path lifetime (nodes graph) }
 	shift edge    = intersect (propogation edge) (delay edge +. lifetime)
 
-propogateSignal go combine nodeId time graph = go [nodeId] times graph where
-	times = combine (singleton (openRight time)) (findWithDef [nodeId] (nodes graph))
+propogateSignal go combine nodeId now graph = go [nodeId] times graph where
+	times = combine (singleton (openRight now)) (findWithDef [nodeId] (nodes graph))
 
 addSignal' :: (Ord nodeId, Ord time, Num time) => [nodeId] -> Life time -> Graph nodeId time -> Graph nodeId time
 subSignal' :: (Ord nodeId, Ord time, Num time) => [nodeId] -> Life time -> Graph nodeId time -> Graph nodeId time
@@ -120,7 +120,7 @@ addEdge' = propogateEdge' addSignal' diff      union       diff
 subEdge' = propogateEdge' subSignal' intersect (flip diff) (flip diff)
 addEdge  = unPrime addEdge'
 subEdge  = unPrime subEdge'
-unPrime f' time source target = f' (singleton (openRight time)) source target
+unPrime f' now source target = f' (singleton (openRight now)) source target
 
 initializeEdge delay source target graph = insertInto cleanGraph where
 	oldEdge    = lookup source target (edges graph)
