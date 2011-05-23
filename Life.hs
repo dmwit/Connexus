@@ -94,8 +94,8 @@ diff (Life is) (Life is') = Life (go is is') where
 		| end   i ==  end   i' = go t is'
 		| otherwise            = Interval (reStart i', end i) : go t is'
 
-	reStart = AddMin . unsafeEnd
-	reEnd   = AddMax . unsafeStart
+	reStart = MaxPriority . unsafeEnd
+	reEnd   = MinPriority . unsafeStart
 
 intersect  a = diff a . diff a
 contiguous t = Life . takeWhile (\i -> return t <= end i) . dropWhile (\i -> return t < start i) . unLife

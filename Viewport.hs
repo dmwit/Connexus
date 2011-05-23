@@ -130,9 +130,9 @@ conversion posRef = time >>= flip conversionAt posRef
 -- }}}
 -- event handling {{{
 -- timeouts {{{
-fromStableTime :: AddMin Double -> Stabilization
-fromStableTime (AddMin Nothing)  = Already
-fromStableTime (AddMin (Just t)) = ExactTime t
+fromStableTime :: MaxPriority Double -> Stabilization
+fromStableTime (MaxPriority Nothing ) = Already
+fromStableTime (MaxPriority (Just t)) = ExactTime t
 
 stableTimeout :: DrawingArea -> IORef Stabilization -> IO Bool
 stableTimeout da stableRef = do

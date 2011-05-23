@@ -12,9 +12,10 @@ import Control.Monad
 import Data.Function
 import Data.List (sortBy)
 import Data.Maybe
+import Data.Monoid
 import Data.Ord
 
-newtype Interval a = Interval (AddMin a, AddMax a) deriving (Show, Read)
+newtype Interval a = Interval (MaxPriority a, MinPriority a) deriving (Show, Read)
 instance Functor Interval where fmap f (Interval (b, e)) = Interval (fmap f b, fmap f e)
 
 instance Ord a => Eq (Interval a) where
@@ -26,12 +27,12 @@ instance Stable Interval where stable i = maybe (start i) return (unsafeEnd i)
 start (Interval (b, e)) = b
 end   (Interval (b, e)) = e
 
-unsafeStart (Interval (AddMin b, AddMax e)) = b
-unsafeEnd   (Interval (AddMin b, AddMax e)) = e
+unsafeStart (Interval (MaxPriority b, MinPriority e)) = b
+unsafeEnd   (Interval (MaxPriority b, MinPriority e)) = e
 
-open          = Interval (mzero   , mzero   )
-openLeft    e = Interval (mzero   , return e)
-openRight b   = Interval (return b, mzero   )
+open          = Interval (mempty  , mempty  )
+openLeft    e = Interval (mempty  , return e)
+openRight b   = Interval (return b, mempty  )
 closed    b e = Interval (return b, return e)
 
 hasWidth i      = start i <. end i
@@ -64,5 +65,5 @@ class NumLike f where
 instance NumLike Interval where
 	t +. i = fmap (t+) i
 	t *. i | t >= 0 = fmap (t*) i
-	t *. (Interval (AddMin b, AddMax e)) = fmap (t*) (Interval (AddMin e, AddMax b))
-	t /. (Interval (AddMin b, AddMax e)) = t *. fmap recip (Interval (AddMin e, AddMax b))
+	t *. (Interval (MaxPriority b, MinPriority e)) = fmap (t*) (Interval (MaxPriority e, MinPriority b))
+	t /. (Interval (MaxPriority b, MinPriority e)) = t *. fmap recip (Interval (MaxPriority e, MinPriority b))
