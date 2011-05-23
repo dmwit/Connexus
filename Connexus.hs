@@ -27,7 +27,7 @@ clickGrid grid lockRef b x y = case b of
 
 drawGridLock grid lockRef = do
 	Grid.update grid
-	liftIO (readIORef lockRef) >>= Lock.update -- TODO: move the IO into Lock.update?
+	liftIO (readIORef lockRef) >>= Lock.update
 
 main = do
 	initGUI
