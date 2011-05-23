@@ -44,6 +44,12 @@ adjust f k1 k2   = M.adjust (M.adjust f k2) k1
 
 -- node operations {{{1
 -- optimization idea: cache these
+-- to make this efficient, store them in a trie: each entry in the trie is the
+-- union of all signals whose path starts with that position in the trie; to
+-- recache, find the deepest place in the trie that you're changing and walk it
+-- back to the root, recaching as you go
+--
+-- as a side benefit: this lets you compute the edge signals more quickly as well
 querySignals :: (Ord nodeId, Ord time) => Graph nodeId time -> Map nodeId (Life time)
 querySignals = M.mapKeysWith union head . M.delete [] {- defensive programming -} . nodes
 

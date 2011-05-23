@@ -31,6 +31,7 @@ data Node a
 	| Above   { x, y :: a }
 	deriving (Eq, Ord, Show, Read)
 
+-- TODO: would Set Direction be better?
 data Piece = Piece { north, east, south, west :: Bool }
 	deriving (Eq, Ord, Show, Read)
 instance Default Piece where def = Piece False False False False
