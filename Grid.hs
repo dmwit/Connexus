@@ -17,6 +17,7 @@ import Control.Monad.Random
 import Control.Monad.Trans
 import Data.Array.IO
 import Data.Default
+import Data.IORef
 import Data.List hiding (intersect, union)
 import Data.Maybe
 import Data.Ord
@@ -65,7 +66,7 @@ toggle d p = piece (\d' -> (d == d') /= unPiece p d')
 -- Grid type {{{1
 data Grid a t = Grid {
 	pieces :: IOArray (a,a) Piece,
-	graph  :: Graph (Node a) t -- TODO: IORef this
+	graph  :: IORef (Graph (Node a) t)
 	}
 -- }}}
 defaultDelay = 0.05
@@ -75,7 +76,8 @@ grid :: (Ix a, Num a, Fractional t, Ord t, MonadIO m) =>
 grid array = liftIO $ do
 	now  <- time
 	xyps <- getAssocs array
-	return (Grid array (newGraph now xyps))
+	gref <- newIORef (newGraph now xyps)
+	return (Grid array gref)
 	where
 	newGraph now xyps = foldr ($) def (xyps >>= inits now)
 	inits now (pos, piece) =
@@ -148,9 +150,10 @@ forPoints_ array f = liftIO (getAssocs array) >>= mapM_ (uncurry f)
 forLiveEdges_ :: (Ix a, Num a, MonadIO m) =>
 	(Node a -> Node a -> Graph (Node a) t -> m ()) -> Grid a t -> m ()
 forLiveEdges_ f grid =
-	forPoints_ (pieces grid) $ \pos piece ->
-		forM_ [minBound .. maxBound] $ \dir ->
-			when (unPiece piece dir) (f (lattice pos) (neighbor dir pos) (graph grid))
+	liftIO (readIORef (graph grid)) >>= \g ->
+		forPoints_ (pieces grid) $ \pos piece ->
+			forM_ [minBound .. maxBound] $ \dir ->
+				when (unPiece piece dir) (f (lattice pos) (neighbor dir pos) g)
 
 markTerminals now signals pos@(x',y') piece = when terminal $ do
 	if lit then setSourceRGB 0 0.9 0 else setSourceRGB 0 0.3 0
@@ -164,6 +167,7 @@ markTerminals now signals pos@(x',y') piece = when terminal $ do
 
 update grid = do
 	now <- time
+	g   <- liftIO (readIORef (graph grid))
 	setLineWidth 0.4
 	setLineCap LineCapRound
 	setSourceRGB  0 0 0
@@ -171,21 +175,17 @@ update grid = do
 	setSourceRGBA 0 0 1 0.6
 	forLiveEdges_ (singleSignal now) grid >> stroke
 	forLiveEdges_ (doubleSignal now) grid >> stroke
-	forPoints_ (pieces grid) (markTerminals now (querySignals (graph grid)))
+	forPoints_ (pieces grid) (markTerminals now (querySignals g))
 -- modification {{{1
--- TODO: don't return, just update
 rotate rotation pos grid = do
 	bounds <- getBounds (pieces grid)
-	if inRange bounds pos
-		then unsafeRotate rotation pos grid
-		else return grid
+	when (inRange bounds pos) (unsafeRotate rotation pos grid)
 
--- TODO: don't return, just update
 unsafeRotate rotation pos grid = do
 	now <- time
 	p   <- readArray (pieces grid) pos
 	writeArray (pieces grid) pos (rotation p)
-	return grid { graph = rotate' now p (graph grid) }
+	modifyIORef (graph grid) (rotate' now p)
 	where
 	correct' True False = subEdge
 	correct' False True = addEdge
@@ -195,14 +195,9 @@ unsafeRotate rotation pos grid = do
 	rotate'     now p   = foldr (.) id (corrections now p)
 
 -- TODO: should we call "time" only once here?
-rotateGridRandomly grid = getBounds (pieces grid) >>= foldM unsafeRotatePointRandomly grid . range
+rotateGridRandomly grid = getBounds (pieces grid) >>= mapM_ (unsafeRotatePointRandomly grid) . range
 unsafeRotatePointRandomly grid pos = do
 	rotation <- uniform [id, clockwise, aboutFace, counterclockwise]
 	unsafeRotate rotation pos grid
 
--- TODO: don't return, just update
-signal pos grid = do
-	now <- time
-	return grid { graph = addSignal (lattice pos) now (graph grid) }
-
-instance Stable (Grid a) where stable = stable . graph
+signal pos grid = time >>= modifyIORef (graph grid) . addSignal (lattice pos)

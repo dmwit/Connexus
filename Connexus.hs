@@ -15,19 +15,19 @@ import Graphics.UI.Gtk hiding (Viewport, viewportNew)
 import Graphics.UI.Gtk.Gdk.EventM (MouseButton(..))
 import System.Environment
 -- }}}
-clickGrid gridRef lockRef b x y = case b of
+clickGrid grid lockRef b x y = case b of
 	LeftButton   -> doRotation counterclockwise
 	RightButton  -> doRotation clockwise
 	MiddleButton -> ioStateT lockRef (toggle pos)
 	where
 	doRotation rotation
 		= ioStateT lockRef . whenUnlocked pos . liftIO
-		$ readIORef gridRef >>= rotate rotation pos >>= writeIORef gridRef
+		$ rotate rotation pos grid
 	pos = (round x, round y)
 
-drawGridLock gridRef lockRef = do
-	liftIO (readIORef gridRef) >>= Grid.update
-	liftIO (readIORef lockRef) >>= Lock.update
+drawGridLock grid lockRef = do
+	Grid.update grid
+	liftIO (readIORef lockRef) >>= Lock.update -- TODO: move the IO into Lock.update?
 
 main = do
 	initGUI
@@ -36,14 +36,15 @@ main = do
 		[[(w, "")], [(h, "")]] -> (w, h)
 		_ -> (11, 11)
 	window  <- windowNew
-	grid    <- randomGrid w h >>= rotateGridRandomly >>= signal (w `div` 2, h `div` 2)
+	grid    <- randomGrid w h
+	rotateGridRandomly grid
+	signal (w `div` 2, h `div` 2) grid
 	--grid    <- staticGrid ([((0,y),[North,East,South]) | y <- [0..10]] ++ [((1,y),[North,West,South]) | y <- [0..10]]) >>= signal (0,0)
-	gridRef <- newIORef grid
 	lockRef <- newIORef def
 	da      <- viewportNew def {
-		stabilizationTime = liftM (fromStableTime . stable) (readIORef gridRef),
-		draw     = drawGridLock gridRef lockRef,
-		click    = clickGrid    gridRef lockRef,
+		stabilizationTime = liftM (fromStableTime . stable) (readIORef (graph grid)),
+		draw     = drawGridLock grid lockRef,
+		click    = clickGrid    grid lockRef,
 		position = Position {
 			centerX = def { dimension = (fromIntegral w - 1) / 2 }, centerY = def { dimension = (fromIntegral h - 1) / 2 },
 			width   = def { dimension =  fromIntegral w          }, height  = def { dimension =  fromIntegral h          }
