@@ -89,8 +89,9 @@ diff (Life is) (Life is') = Life (go is is') where
 		| end   i <=. start i' = go is t'
 		| start i <   start i' &&
 		  end   i <=  end   i' = go (Interval (start i, reEnd i') : t) t'
-		| start i <.  start i' &&
-		  end   i >.  end   i' = Interval (reStart i', end i) : go (Interval (start i, reEnd i') : t) t'
+		| start i <   start i' &&
+		  end   i >   end   i' = Interval (reStart i', end i) : go (Interval (start i, reEnd i') : t) t'
+		| end   i ==  end   i' = go t is'
 		| otherwise            = Interval (reStart i', end i) : go t is'
 
 	reStart = AddMin . unsafeEnd
@@ -98,7 +99,7 @@ diff (Life is) (Life is') = Life (go is is') where
 
 intersect  a = diff a . diff a
 contiguous t = Life . takeWhile (\i -> return t <= end i) . dropWhile (\i -> return t < start i) . unLife
-contains t l = not . isEmpty $ contiguous l t
+contains l t = not . isEmpty $ contiguous t l
 
 stripe t (Life is)
 	| t >= 0 = Life (strip    [Interval (fmap (+        t) (start i), end i) | i <- is])

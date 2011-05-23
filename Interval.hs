@@ -35,7 +35,7 @@ openRight b   = Interval (return b, mzero   )
 closed    b e = Interval (return b, return e)
 
 hasWidth i      = start i <. end i
-i `contains` i' = start i >=. start i' && end i <=. end i'
+i `contains` i' = start i <= start i' && end i >= end i'
 
 infixl 6 .+
 infixl 6 +.
