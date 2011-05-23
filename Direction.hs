@@ -14,6 +14,11 @@ dy East  =  0
 dy South =  1
 dy West  =  0
 
+angle North = 3 * pi / 2
+angle East  = 0
+angle South = pi / 2
+angle West  = pi
+
 step d (x, y) = (x + dx d, y + dy d)
 
 class Oriented a where
