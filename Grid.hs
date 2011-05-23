@@ -21,21 +21,18 @@ import Data.IORef
 import Data.List hiding (intersect, union)
 import Data.Maybe
 import Data.Ord
+import Data.Set (Set)
 import Graphics.Rendering.Cairo hiding (rotate)
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 
--- Node and Piece types {{{1
+-- Node type {{{1
 data Node a
 	= Lattice { x, y :: a }
 	| RightOf { x, y :: a }
 	| Above   { x, y :: a }
 	deriving (Eq, Ord, Show, Read)
-
--- TODO: would Set Direction be better?
-data Piece = Piece { north, east, south, west :: Bool }
-	deriving (Eq, Ord, Show, Read)
-instance Default Piece where def = Piece False False False False
 
 -- utility functions {{{1
 neighbor North (x, y) = Above    x      y
@@ -46,33 +43,21 @@ lattice        (x, y) = Lattice  x      y
 
 both f s t = f s t . f t s
 
-piece   :: (Direction -> Bool) -> Piece
-unPiece :: Piece -> (Direction -> Bool)
-piece   f       = Piece (f North) (f East) (f South) (f West)
-unPiece p North = north p
-unPiece p East  = east  p
-unPiece p South = south p
-unPiece p West  = west  p
-
-instance Oriented Piece where
-	clockwise        = liftM4 Piece west north east south
-	counterclockwise = liftM4 Piece east south west north
-	aboutFace        = liftM4 Piece south west north east
-
-set    d p = piece (\d' ->  d == d'  || unPiece p d')
-unset  d p = piece (\d' ->  d /= d'  && unPiece p d')
-toggle d p = piece (\d' -> (d == d') /= unPiece p d')
+instance (Ord a, Oriented a) => Oriented (Set a) where
+	clockwise        = S.map clockwise
+	counterclockwise = S.map counterclockwise
+	aboutFace        = S.map aboutFace
 
 -- Grid type {{{1
 data Grid a t = Grid {
-	pieces :: IOArray (a,a) Piece,
+	pieces :: IOArray (a,a) (Set Direction),
 	graph  :: IORef (Graph (Node a) t)
 	}
 -- }}}
 defaultDelay = 0.05
 -- creation {{{1
 grid :: (Ix a, Num a, Fractional t, Ord t, MonadIO m) =>
-	IOArray (a, a) Piece -> m (Grid a t)
+	IOArray (a, a) (Set Direction) -> m (Grid a t)
 grid array = liftIO $ do
 	now  <- time
 	xyps <- getAssocs array
@@ -81,18 +66,15 @@ grid array = liftIO $ do
 	where
 	newGraph now xyps = foldr ($) def (xyps >>= inits now)
 	inits now (pos, piece) =
-		onNeighbors (unPiece piece) (addEdge now)                 pos ++
-		onNeighbors (const True)    (initializeEdge defaultDelay) pos
-	onNeighbors pred f pos = do
-		d <- [minBound .. maxBound]
-		guard (pred d)
-		return (both f (lattice pos) (neighbor d pos))
+		onNeighbors (addEdge now)                 pos piece ++
+		onNeighbors (initializeEdge defaultDelay) pos (S.fromAscList [minBound .. maxBound])
+	onNeighbors f pos = map (\d -> both f (lattice pos) (neighbor d pos)) . S.toList
 
 staticGrid :: [(Point, [Direction])] -> IO (Grid Int Double)
 staticGrid [] = newArray ((0,0),(0,0)) def >>= grid
 staticGrid pds = do
 	array <- newArray ((minX, minY), (maxX, maxY)) def
-	forM_ pds $ \(p, ds) -> forM_ ds $ \d -> modifyArray array (toggle d) p
+	forM_ pds $ \(p, ds) -> writeArray array p (S.fromList ds)
 	grid array
 	where
 	[minX, minY, maxX, maxY] = [f (map (g . fst) pds) | f <- [minimum, maximum], g <- [fst, snd]]
@@ -105,28 +87,24 @@ randomGrid w h = do
 	fill array 0 [origin]
 	grid array
 	where
+	bounds = ((0,0), (w-1,h-1))
 	fill array n []   = return ()
 	fill array n poss = do -- invariant: n = length poss - 1
 		i <- getRandomR (0, n)
 		let pos@(x, y) = poss !! i
-		already  <- directions array pos
+		already  <- readArray array pos
 		possible <- flip filterM [minBound .. maxBound] $ \d ->
 			if   inRange bounds (step d pos)
-			then liftM null (directions array (step d pos))
+			then liftM S.null (readArray array (step d pos))
 			else return False
-		case (already, possible) of
+		case (S.toList already, possible) of
 			(_:_:_:_, _ ) -> fill array (n-1) (delete pos poss)
 			(   _   , []) -> fill array (n-1) (delete pos poss)
 			(   _   , ds) -> do
 				d <- uniform ds
-				modifyArray array (set               d)         pos
-				modifyArray array (set . aboutFace $ d) (step d pos)
+				modifyArray array (S.insert               d)         pos
+				modifyArray array (S.insert . aboutFace $ d) (step d pos)
 				fill array (n+1) (step d pos : poss)
-
-	bounds = ((0,0), (w-1,h-1))
-	directions array pos = do
-		p <- readArray array pos
-		return . filter (unPiece p) $ [minBound .. maxBound]
 
 -- rendering {{{1
 x' l@(RightOf {}) = fromIntegral (x l) + 0.5
@@ -152,16 +130,15 @@ forLiveEdges_ :: (Ix a, Num a, MonadIO m) =>
 forLiveEdges_ f grid =
 	liftIO (readIORef (graph grid)) >>= \g ->
 		forPoints_ (pieces grid) $ \pos piece ->
-			forM_ [minBound .. maxBound] $ \dir ->
-				when (unPiece piece dir) (f (lattice pos) (neighbor dir pos) g)
+			forM_ (S.toList piece) $ \dir ->
+				f (lattice pos) (neighbor dir pos) g
 
-markTerminals now signals pos@(x',y') piece = when terminal $ do
+markTerminals now signals pos@(x',y') piece = when (S.size piece == 1) $ do
 	if lit then setSourceRGB 0 0.9 0 else setSourceRGB 0 0.3 0
 	moveTo (x + 0.1) (y + 0.1)
 	arc x y 0.1 0 (2 * pi)
 	fill
 	where
-	terminal = [() | dir <- [north, east, south, west], dir piece] == [()]
 	(x, y)   = (fromIntegral x', fromIntegral y')
 	lit      = fromMaybe empty (M.lookup (lattice pos) signals) `contains` now
 
@@ -191,7 +168,7 @@ unsafeRotate time rotation pos grid = do
 	correct' False True = addEdge
 	correct'   _    _   = \now s t -> id
 	correct now d b1 b2 = both (correct' b1 b2 now) (lattice pos) (neighbor d pos)
-	corrections now p   = [correct now d (unPiece p d) (unPiece (rotation p) d) | d <- [minBound .. maxBound]]
+	corrections now p   = [correct now d (d `S.member` p) (d `S.member` rotation p) | d <- [minBound .. maxBound]]
 	rotate'     now p   = foldr (.) id (corrections now p)
 
 rotateGridRandomly grid = do
