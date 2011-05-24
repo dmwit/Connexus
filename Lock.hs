@@ -61,9 +61,8 @@ corner x y d nd ndrd nrd
 			(x + dx d' + full dx d''' d / 2)
 			(y + dy d' + full dy d''' d / 2)
 			0.25 (angle d''' + pi / 2) (angle d''')
-	| otherwise = do
-		lineTo (x + full    dx d' d) (y + full    dy d' d)
-		lineTo (x + partial dx d' d) (y + partial dy d' d)
+	| otherwise =
+		lineTo (x + full dx d' d) (y + full dy d' d)
 	where
 	(_:d':d'':d''':_) = iterate clockwise d
 
