@@ -7,6 +7,7 @@ module Interval (
 	) where
 
 import Bounds
+import Misc
 
 import Control.Monad
 import Data.Function
@@ -23,6 +24,10 @@ instance Ord a => Eq (Interval a) where
 	          start i == start i' && end i == end i'
 
 instance Stable Interval where stable i = maybe (start i) return (unsafeEnd i)
+
+instance PPrint a => PPrint (MaxPriority a) where pprint (MaxPriority n) = maybe "-infty" pprint n
+instance PPrint a => PPrint (MinPriority a) where pprint (MinPriority n) = maybe  "infty" pprint n
+instance PPrint a => PPrint (Interval    a) where pprint (Interval    i) = pprint i
 
 start (Interval (b, e)) = b
 end   (Interval (b, e)) = e

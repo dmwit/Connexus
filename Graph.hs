@@ -1,15 +1,19 @@
 -- boilerplate {{{1
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Graph where
 
 import Bounds
 import Interval (closed, openRight)
 import Life
+import Misc
+import TrieCache (TrieCache)
+import qualified TrieCache as T
 
 import Control.Monad
 import Data.Default
 import Data.Map (Map)
+import Data.Maybe
 import Data.Monoid
 import Prelude hiding (lookup)
 import qualified Data.Map as M
@@ -24,9 +28,26 @@ propogation e = stripe (delay e) (life e)
 
 data Graph nodeId time = Graph {
 	edges :: Map nodeId (Map nodeId (Edge time)),
-	nodes :: Map [nodeId] (Life time) -- no empty lists as keys
+	nodes :: TrieCache nodeId time -- invariant: the prefix "" is always associated with an empty lifetime
 	} deriving (Eq, Show, Read)
 instance Default (Graph nodeId time) where def = Graph def def
+
+instance (PPrint nodeId, PPrint time, Ord time) => PPrint (Graph nodeId time) where
+	pprint (Graph es ns) = conns ++ cache where
+		conns = do
+			(i, es' ) <- M.assocs es
+			(o, edge) <- M.assocs es'
+			if isEmpty (life edge) then "" else concat [
+				pprint i,
+				" -> ",
+				pprint o,
+				": ",
+				pprint (life edge),
+				"/",
+				pprint (signalCache edge),
+				"\n"
+				]
+		cache = pprint ns
 
 -- utility functions for working with a nested Map {{{1
 findWithDef :: (Ord k, Default a) => k -> Map k a -> a
@@ -43,15 +64,8 @@ lookup   k1 k2   = M.lookup k1 >=> M.lookup k2
 adjust f k1 k2   = M.adjust (M.adjust f k2) k1
 
 -- node operations {{{1
--- optimization idea: cache these
--- to make this efficient, store them in a trie: each entry in the trie is the
--- union of all signals whose path starts with that position in the trie; to
--- recache, find the deepest place in the trie that you're changing and walk it
--- back to the root, recaching as you go
---
--- as a side benefit: this lets you compute the edge signals more quickly as well
-querySignals :: (Ord nodeId, Ord time) => Graph nodeId time -> Map nodeId (Life time)
-querySignals = M.mapKeysWith union head . M.delete [] {- defensive programming -} . nodes
+querySignals :: Ord nodeId => Graph nodeId time -> nodeId -> Life time
+querySignals g n = T.query [n] (nodes g)
 
 -- TODO: parallelize this, or rather, incrementalize this, and make a separate
 -- thread for doing the incremental computations (to keep the interface snappy)
@@ -71,33 +85,31 @@ propogateSignal' update path@(~(source:rest)) lifetime graph
 	| null path          = graph
 	| isEmpty lifetime   = graph
 	| source `elem` rest = graph
-	| otherwise          = foldr ($) graph' modifications where
+	| otherwise          = foldr ($) graph { nodes = nodes' } modifications where
 	outgoing      = M.assocs (findWithDef source (edges graph))
 	modifications = [recache source target . propogateSignal' update (target:path) (shift edge) | (target, edge) <- outgoing]
-	graph'        = graph { nodes = update path lifetime (nodes graph) }
-	shift edge    = intersect (propogation edge) (delay edge +. lifetime)
+	shift edge    = intersect (propogation edge) (delay edge +. lifetime')
+	(nodes', lifetime') = update path lifetime (nodes graph)
 
-propogateSignal go combine nodeId now graph = go [nodeId] times graph where
-	times = combine (singleton (openRight now)) (findWithDef [nodeId] (nodes graph))
+propogateSignal update nodeId = propogateSignal' update [nodeId] . singleton . openRight
 
 addSignal' :: (Ord nodeId, Ord time, Num time) => [nodeId] -> Life time -> Graph nodeId time -> Graph nodeId time
 subSignal' :: (Ord nodeId, Ord time, Num time) => [nodeId] -> Life time -> Graph nodeId time -> Graph nodeId time
 addSignal  :: (Ord nodeId, Ord time, Num time) =>  nodeId  ->      time -> Graph nodeId time -> Graph nodeId time
 subSignal  :: (Ord nodeId, Ord time, Num time) =>  nodeId  ->      time -> Graph nodeId time -> Graph nodeId time
 
--- TODO: should subSignal' delete nodes when their lifetimes drop to zero?
-addSignal' = propogateSignal' (M.insertWith union)
-subSignal' = propogateSignal' (\path nodeDeath -> M.adjust (`diff` nodeDeath) path)
-addSignal  = propogateSignal addSignal' diff
-subSignal  = propogateSignal subSignal' intersect
+addSignal' = propogateSignal' T.addLife
+subSignal' = propogateSignal' T.subLife
+addSignal  = propogateSignal  T.addLife
+subSignal  = propogateSignal  T.subLife
 
+-- edge operations {{{1
 addEdge'       :: (Ord nodeId, Ord time, Num time) => Life time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 subEdge'       :: (Ord nodeId, Ord time, Num time) => Life time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 addEdge        :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 subEdge        :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 initializeEdge :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 
--- edge operations {{{1
 -- easily one of the most complicated functions in here, used for adding to or subtracting from an edge's lifetime
 -- mod: how to change the signal appearing at the target node in observation of the change to this edge
 -- overlap: how to compute which part of the change to the lifetime is actually a change, and which is shared with the old edge
@@ -112,9 +124,9 @@ propogateEdge' mod overlap combine newProp edgeLife source target graph = foldr 
 	propM    = maybe empty propogation
 	propLife = newProp (propM newEdge) (propM oldEdge)
 	graph'   = graph { edges = adjust (\e -> maybe e id newEdge) source target (edges graph) }
-	signals  = M.filterWithKey (\k _ -> take 1 k == [source]) (nodes graph)
+	signals  = maybe def T.assocs (nodes graph >>= T.deletePrefix [source])
 	delayM   = maybe 0 delay newEdge -- the 0 should never matter, because anything using it will be thrown away
-	mods     = recache source target : [mod (target:path) (intersect propLife (delayM +. lifetime)) | (path, lifetime) <- M.assocs signals]
+	mods     = recache source target : [mod (source:target:path) (intersect propLife (delayM +. lifetime)) | (path, lifetime) <- signals]
 
 addEdge' = propogateEdge' addSignal' diff      union       diff
 subEdge' = propogateEdge' subSignal' intersect (flip diff) (flip diff)
@@ -136,19 +148,19 @@ queryEdge now source target = maybe empty scale . lookup source target . edges w
 	live  edge = intersect (singleton (closed (now - delay edge) now)) (contiguous now (life edge))
 
 -- misc {{{1
-instance Stable (Graph nodeId) where
+instance Ord nodeId => Stable (Graph nodeId) where
 	-- even though all the nodes may have stabilized, the entire graph may not have
 	-- stabilized yet if there's still a signal traveling on its last leg in a
 	-- cycle; to account for this, simply conservatively delay the stable time of
 	-- the nodes by the maximal delay of any edge in the graph
 	stable g = fmap (maxEdge g +) (maxNode g) where
-		maxNode = mconcat . map stable . M.elems . nodes
+		maxNode = stable . T.query [] . nodes
 		maxEdge = maximum . (0:) . map delay . concatMap M.elems . M.elems . edges
 
 -- optimization idea: instead of recomputing the whole damn lifetime, just incrementally update it
 recache :: (Ord nodeId, Ord time) => nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 recache source target graph = graph { edges = adjust update source target (edges graph) } where
-	update  e = e { signalCache = signal }
-	signal    = findWithDef source . M.mapKeysWith union head . M.filterWithKey valid . nodes $ graph
-	valid k _ = take 1 k == [source] && take 1 (drop 1 k) /= [target]
-	-- @valid@ makes sure we don't send a signal right back to the node it came from
+	update e = e { signalCache = signal }
+	signal   = maybe def retrieve (nodes graph >>= T.deletePrefix [source])
+	retrieve = unions . map T.deeper . M.elems . M.delete target . T.children
+	-- @M.delete target@ makes sure we don't send a signal right back to the node it came from

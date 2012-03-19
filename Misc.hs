@@ -1,4 +1,4 @@
-{-# LANGUAGE NoMonomorphismRestriction, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE NoMonomorphismRestriction, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, TypeSynonymInstances #-}
 module Misc where
 
 import Control.Monad.Random
@@ -8,8 +8,8 @@ import Data.Array.Base
 import Data.Array.IO
 import Data.Array.MArray
 import Data.Default
-import Data.IntMap
 import Data.IORef
+import Data.List
 import Data.Time
 import System.Random
 
@@ -49,4 +49,16 @@ instance (Random a, Random b) => Random (a, b) where
 		in ((a, b), g'')
 	random g = let (a, g') = random g; (b, g'') = random g' in ((a, b), g'')
 
-instance Default (IntMap a) where def = empty
+-- useful for debugging
+class PPrint a where
+	pprint :: a -> String
+
+instance PPrint Int      where pprint = show
+instance PPrint Integer  where pprint = show
+instance PPrint Double   where pprint = show
+instance PPrint Float    where pprint = show
+instance PPrint Rational where pprint = show
+instance (PPrint a, PPrint b) => PPrint (a, b) where
+	pprint (a, b) = "(" ++ pprint a ++ ", " ++ pprint b ++ ")"
+instance PPrint a => PPrint [a] where
+	pprint xs = "[" ++ intercalate ", " (map pprint xs) ++ "]"

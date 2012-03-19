@@ -39,7 +39,8 @@ main = do
 	grid    <- randomGrid w h
 	rotateGridRandomly grid
 	signal (w `div` 2, h `div` 2) grid
-	--grid    <- staticGrid ([((0,y),[North,East,South]) | y <- [0..10]] ++ [((1,y),[North,West,South]) | y <- [0..10]]) >>= signal (0,0)
+	--grid    <- staticGrid ([((0,y),[North,East,South]) | y <- [0..10]] ++ [((1,y),[North,West,South]) | y <- [0..10]])
+	--signal (0,0) grid
 	lockRef <- newIORef def
 	da      <- viewportNew def {
 		stabilizationTime = liftM (fromStableTime . stable) (readIORef (graph grid)),

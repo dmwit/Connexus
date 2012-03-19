@@ -10,6 +10,7 @@ module Life (
 
 import Bounds
 import Interval (start, end, unsafeStart, unsafeEnd, hasWidth, Interval(..), NumLike(..))
+import Misc
 import qualified Interval as I
 
 import Control.Monad
@@ -36,6 +37,7 @@ isEmpty = (empty ==)
 -- Invariants (1) and (2) ensure that if there are any intervals, the first one
 -- has the highest stable time.
 instance Stable Life where stable = mconcat . take 1 . map stable . unLife
+instance PPrint a => PPrint (Life a) where pprint (Life is) = pprint (reverse is)
 
 -- Reinstate invariant (2). Preserves invariant (3).
 reorder = sortBy (flip $ comparing end)

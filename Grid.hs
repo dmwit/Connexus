@@ -34,6 +34,12 @@ data Node a
 	| Above   { x, y :: a }
 	deriving (Eq, Ord, Show, Read)
 
+pprint' c1 c2 n = '(' : pprint (x n) ++ c1 : ", " ++ pprint (y n) ++ c2 : ")"
+instance PPrint a => PPrint (Node a) where
+	pprint n@(Lattice {}) = pprint' ' ' ' ' n
+	pprint n@(RightOf {}) = pprint' '+' ' ' n
+	pprint n@(Above   {}) = pprint' ' ' '-' n
+
 -- utility functions {{{1
 neighbor North (x, y) = Above    x      y
 neighbor East  (x, y) = RightOf  x      y
@@ -140,7 +146,7 @@ markTerminals now signals pos@(x',y') piece = when (S.size piece == 1) $ do
 	fill
 	where
 	(x, y)   = (fromIntegral x', fromIntegral y')
-	lit      = fromMaybe empty (M.lookup (lattice pos) signals) `contains` now
+	lit      = signals (lattice pos) `contains` now
 
 update grid = do
 	now <- time
