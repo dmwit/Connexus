@@ -6,8 +6,6 @@ import Direction
 import Misc
 
 import Control.Monad.State
-import Data.Function
-import Data.IORef
 import Data.Set (Set)
 import Graphics.Rendering.Cairo
 import qualified Data.Set as Set

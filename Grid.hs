@@ -12,7 +12,6 @@ import Life
 import Misc
 
 import Control.Monad
-import Control.Monad.Instances
 import Control.Monad.Random
 import Control.Monad.Trans
 import Data.Array.IO
@@ -20,11 +19,9 @@ import Data.Default
 import Data.IORef
 import Data.List hiding (intersect, union)
 import Data.Maybe
-import Data.Ord
 import Data.Set (Set)
 import Graphics.Rendering.Cairo hiding (rotate)
 
-import qualified Data.Map as M
 import qualified Data.Set as S
 
 -- Node type {{{1

@@ -3,15 +3,11 @@ module Misc where
 
 import Control.Monad.Random
 import Control.Monad.State
-import Control.Monad.Trans
 import Data.Array.Base
 import Data.Array.IO
-import Data.Array.MArray
-import Data.Default
 import Data.IORef
 import Data.List
 import Data.Time
-import System.Random
 
 type Point = (Int, Int)
 

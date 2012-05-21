@@ -1,17 +1,11 @@
 -- boilerplate {{{1
 import Constraint
-import Direction hiding (step)
 import Grid
-import Misc
 import Viewport
 
-import Control.Monad
 import Control.Monad.Reader
-import Control.Monad.State
 import Data.Default
-import Data.IORef
 import Graphics.UI.Gtk hiding (Viewport, viewportNew)
-import Graphics.UI.Gtk.Gdk.EventM (MouseButton(..))
 import System.Environment
 -- }}}
 

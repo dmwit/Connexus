@@ -9,12 +9,8 @@ module Interval (
 import Bounds
 import Misc
 
-import Control.Monad
 import Data.Function
-import Data.List (sortBy)
-import Data.Maybe
 import Data.Monoid
-import Data.Ord
 
 newtype Interval a = Interval (MaxPriority a, MinPriority a) deriving (Show, Read)
 instance Functor Interval where fmap f (Interval (b, e)) = Interval (fmap f b, fmap f e)

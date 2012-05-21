@@ -5,8 +5,6 @@ module Bounds (
 	(>.), (<.), (>=.), (<=.), (==.)
 	) where
 
-import Control.Monad
-import Data.Monoid
 import Data.Monoid.Ord
 
 deriving instance Monad MaxPriority

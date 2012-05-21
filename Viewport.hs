@@ -16,10 +16,8 @@ import Bounds
 import Control.Monad
 import Data.Default
 import Data.IORef
-import Data.Maybe
 import Graphics.Rendering.Cairo
 import Graphics.UI.Gtk hiding (Viewport, viewportNew)
-import Graphics.UI.Gtk.Gdk.EventM
 
 -- types {{{1
 data PointerLocation = PointerLocation { locationTime :: TimeStamp, pos :: (Double, Double) } deriving (Eq, Ord, Show, Read)

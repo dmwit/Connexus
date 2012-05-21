@@ -2,15 +2,13 @@
 module Constraint where
 
 import Direction
-import Grid
+import Grid ()
 import Misc
 
 import Control.Monad
 import Data.Array.IO
-import Data.Default
 import Data.Function
 import Data.IORef
-import Data.Maybe
 import Data.Set (Set)
 import Graphics.Rendering.Cairo
 

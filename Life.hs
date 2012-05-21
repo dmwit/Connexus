@@ -13,7 +13,6 @@ import Interval (start, end, unsafeStart, unsafeEnd, hasWidth, Interval(..), Num
 import Misc
 import qualified Interval as I
 
-import Control.Monad
 import Data.Default
 import Data.Function
 import Data.List hiding (union, intersect)
