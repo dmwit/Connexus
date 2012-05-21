@@ -128,7 +128,7 @@ propogateEdge' mod overlap combine newProp edgeLife source target graph = foldr 
 	graph'   = graph { edges = adjust (flip fromMaybe newEdge) source target (edges graph) }
 	signals  = T.assocs . T.descend [source] $ nodes graph
 	delayM   = maybe 0 delay newEdge -- the 0 should never matter, because anything using it will be thrown away
-	mods     = recache source target : [mod (source:target:path) (intersect propLife (delayM +. lifetime)) | (path, lifetime) <- signals]
+	mods     = recache source target : [mod (target:source:path) (intersect propLife (delayM +. lifetime)) | (path, lifetime) <- signals]
 
 addEdge' = propogateEdge' addSignal' diff      union       diff
 subEdge' = propogateEdge' subSignal' intersect (flip diff) (flip diff)
@@ -156,7 +156,7 @@ instance Ord nodeId => Stable (Graph nodeId) where
 	-- cycle; to account for this, simply conservatively delay the stable time of
 	-- the nodes by the maximal delay of any edge in the graph
 	stable g = fmap (maxEdge g +) (maxNode g) where
-		maxNode = stable . T.query [] . nodes
+		maxNode = mconcat . map (stable . T.query []) . M.elems . T.directChildren . nodes
 		maxEdge = maximum . (0:) . map delay . concatMap M.elems . M.elems . edges
 
 -- optimization idea: instead of recomputing the whole damn lifetime, just incrementally update it
