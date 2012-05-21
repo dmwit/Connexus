@@ -100,8 +100,8 @@ subSignal' :: (Ord nodeId, Ord time, Num time) => [nodeId] -> Life time -> Graph
 addSignal  :: (Ord nodeId, Ord time, Num time) =>  nodeId  ->      time -> Graph nodeId time -> Graph nodeId time
 subSignal  :: (Ord nodeId, Ord time, Num time) =>  nodeId  ->      time -> Graph nodeId time -> Graph nodeId time
 
-addSignal' = propogateSignal' T.insertM           diff
-subSignal' = propogateSignal' (T.insertWith diff) (flip diff)
+addSignal' = propogateSignal' T.insertM diff
+subSignal' = propogateSignal' (T.insertWith (flip diff)) (flip diff)
 addSignal  = unPrimePS addSignal'
 subSignal  = unPrimePS subSignal'
 
