@@ -110,29 +110,26 @@ step solver@(Solver { constraints = cs, dirty = dref }) = do
 		Just (pos, d) -> readArray cs pos >>= \c -> runRules c pos d solver
 
 -- rendering {{{1
-update :: Solver -> IO (Render ())
+update :: Solver -> Render ()
 update (Solver { constraints = cs, dirty = dref }) = do
-	drawC <- renderConstraints cs
-	d     <- readIORef dref
-	return (drawC >> renderDirty d)
+	renderConstraints cs
+	d <- liftIO (readIORef dref)
+	renderDirty d
 
 renderConstraints cs = do
-	b  <- getBounds cs
-	rs <- mapM (renderConstraint cs) (range b)
-	return $ do
-		setLineWidth 0.4
-		setLineCap LineCapRound
-		sequence_ rs
+	setLineWidth 0.4
+	setLineCap LineCapRound
+	b <- liftIO (getBounds cs)
+	mapM_ (renderConstraint cs) (range b)
 
 renderConstraint cs pos@(x, y) = do
-	c <- readArray cs pos
-	return $ do
-		let
-			count = fromIntegral $ Set.size c
-			listc = map Set.toList (Set.toList c)
-		setSourceRGBA 0 0 0 (1 / count)
-		mapM_ (mapM_ (\d -> moveTo x' y' >> lineTo (x' + dx d / 2) (y' + dy d / 2) >> stroke)) listc
-		stroke
+	c <- liftIO (readArray cs pos)
+	let
+		count = fromIntegral $ Set.size c
+		listc = map Set.toList (Set.toList c)
+	setSourceRGBA 0 0 0 (1 / count)
+	mapM_ (mapM_ (\d -> moveTo x' y' >> lineTo (x' + dx d / 2) (y' + dy d / 2) >> stroke)) listc
+	stroke
 	where
 	x' = fromIntegral x
 	y' = fromIntegral y
@@ -147,12 +144,12 @@ renderDirty poss = do
 	circle = uncurry (circle' `on` fromIntegral)
 
 -- creating {{{1
-solverFromGrid :: IOArray Point [Connection] -> IO Solver
+solverFromGrid :: IOArray Point (Set Direction) -> IO Solver
 solverFromGrid nodeShape = do
 	b@((xlo, ylo), (xhi, yhi)) <- getBounds nodeShape
 	dref <- newIORef (Set.fromList (range b))
 	cs   <- newArray ((xlo-1, ylo-1), (xhi+1, yhi+1)) (Set.singleton Set.empty)
 	forM_ (range b) $ \pos -> do
 		connections <- readArray nodeShape pos
-		writeArray cs pos (Set.fromList [Set.fromList (map (rotation . direction) connections) | rotation <- [id, clockwise, aboutFace, counterclockwise]])
+		writeArray cs pos (Set.fromList [rotation connections | rotation <- [id, clockwise, aboutFace, counterclockwise]])
 	return Solver { constraints = cs, dirty = dref }

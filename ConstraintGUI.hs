@@ -1,7 +1,7 @@
 -- boilerplate {{{1
 import Constraint
-import Direction
-import Grid hiding (width, height)
+import Direction hiding (step)
+import Grid
 import Misc
 import Viewport
 
@@ -22,11 +22,11 @@ main = do
 		[[(w, "")], [(h, "")]] -> (w, h)
 		_ -> (11, 11)
 	window  <- windowNew
-	grid    <- evalStateT (randomGrid w h) def
-	solver  <- solverFromGrid (nodeShape grid)
+	grid    <- randomGrid w h
+	solver  <- solverFromGrid (pieces grid)
 	da      <- viewportNew def {
 		stabilizationTime = return Never,
-		draw     = step solver >> Constraint.update solver,
+		draw     = liftIO (step solver) >> Constraint.update solver,
 		delay    = 15,
 		position = Position {
 			centerX = def { dimension = (fromIntegral w - 1) / 2 }, centerY = def { dimension = (fromIntegral h - 1) / 2 },
