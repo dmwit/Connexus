@@ -164,6 +164,7 @@ rotate rotation pos grid = do
 	bounds <- getBounds (pieces grid)
 	when (inRange bounds pos) (unsafeRotate time rotation pos grid)
 
+-- unsafe because no bounds check on pos
 unsafeRotate time rotation pos grid = do
 	now <- time
 	p   <- readArray (pieces grid) pos
@@ -182,6 +183,7 @@ rotateGridRandomly grid = do
 	bounds <- getBounds (pieces grid)
 	mapM_ (unsafeRotatePointRandomly now grid) (range bounds)
 
+-- unsafe because no bounds check on pos
 unsafeRotatePointRandomly now grid pos = do
 	rotation <- uniform [id, clockwise, aboutFace, counterclockwise]
 	unsafeRotate (return now) rotation pos grid
