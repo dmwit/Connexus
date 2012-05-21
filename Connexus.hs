@@ -14,8 +14,8 @@ import Data.IORef
 import Graphics.UI.Gtk hiding (Viewport, viewportNew)
 import Graphics.UI.Gtk.Gdk.EventM (MouseButton(..))
 import System.Environment
+-- }}}
 
--- code {{{1
 clickGrid grid lockRef b x y = case b of
 	LeftButton   -> doRotation counterclockwise
 	RightButton  -> doRotation clockwise
