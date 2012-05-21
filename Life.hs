@@ -115,3 +115,14 @@ instance NumLike Life where
 		| t  > 0 = Life            . map (t *.) $ is
 		| t == 0 = Life . collapse . map (t *.) $ is
 	t /. (Life is) = t *. Life (map (1 /.) is)
+
+instance Ord time => Monoid (Life time) where
+	mempty  = empty
+	mappend = union
+	mconcat = unions
+
+{-
+instance Ord time => Monoid (Life time) where
+	mempty  = singleton I.open
+	mappend = intersect
+-}
