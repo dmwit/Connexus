@@ -1,4 +1,4 @@
-{-# LANGUAGE NoMonomorphismRestriction, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, NoMonomorphismRestriction, ScopedTypeVariables, TypeSynonymInstances #-}
 module Misc where
 
 import Control.Monad.Random
@@ -47,7 +47,12 @@ instance (Random a, Random b) => Random (a, b) where
 		(a, g' ) = randomR (alo, ahi) g
 		(b, g'') = randomR (blo, bhi) g'
 		in ((a, b), g'')
-	random g = let (a, g') = random g; (b, g'') = random g' in ((a, b), g'')
+	random g = let
+		a :: a -- ugly, but necessary for GHC-7.4
+		b :: b
+		(a, g') = random g
+		(b, g'') = random g'
+		in ((a, b), g'')
 
 -- useful for debugging
 class PPrint a where pprint :: a -> String
