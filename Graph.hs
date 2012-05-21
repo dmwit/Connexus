@@ -28,7 +28,7 @@ propogation e = stripe (delay e) (life e)
 
 data Graph nodeId time = Graph {
 	edges :: Map nodeId (Map nodeId (Edge time)),
-	nodes :: TrieCache nodeId time -- invariant: the prefix "" is always associated with an empty lifetime
+	nodes :: TrieCache nodeId (Life time)
 	} deriving (Eq, Show, Read)
 instance Default (Graph nodeId time) where def = Graph def def
 
@@ -81,27 +81,28 @@ querySignals g n = T.query [n] (nodes g)
 --    * in the GUI thread, just stick an update in the queue
 --    * in the worker thread, pop updates off, compute them, and update the
 --      graph that the GUI thread is looking at
-propogateSignal' update path@(~(source:rest)) lifetime graph
+propogateSignal' update diff path@(~(source:rest)) lifetime graph
 	| null path          = graph
 	| isEmpty lifetime   = graph
 	| source `elem` rest = graph
 	| otherwise          = foldr ($) graph { nodes = nodes' } modifications where
 	outgoing      = M.assocs (findWithDef source (edges graph))
-	modifications = [recache source target . propogateSignal' update (target:path) (shift edge) | (target, edge) <- outgoing]
+	modifications = [recache source target . propogateSignal' update diff (target:path) (shift edge) | (target, edge) <- outgoing]
 	shift edge    = intersect (propogation edge) (delay edge +. lifetime')
-	(nodes', lifetime') = update path lifetime (nodes graph)
+	nodes'        = update path lifetime (nodes graph)
+	lifetime'     = diff (T.query path nodes') (T.query path (nodes graph))
 
-propogateSignal update nodeId = propogateSignal' update [nodeId] . singleton . openRight
+unPrimePS f nodeId = f [nodeId] . singleton . openRight
 
 addSignal' :: (Ord nodeId, Ord time, Num time) => [nodeId] -> Life time -> Graph nodeId time -> Graph nodeId time
 subSignal' :: (Ord nodeId, Ord time, Num time) => [nodeId] -> Life time -> Graph nodeId time -> Graph nodeId time
 addSignal  :: (Ord nodeId, Ord time, Num time) =>  nodeId  ->      time -> Graph nodeId time -> Graph nodeId time
 subSignal  :: (Ord nodeId, Ord time, Num time) =>  nodeId  ->      time -> Graph nodeId time -> Graph nodeId time
 
-addSignal' = propogateSignal' T.addLife
-subSignal' = propogateSignal' T.subLife
-addSignal  = propogateSignal  T.addLife
-subSignal  = propogateSignal  T.subLife
+addSignal' = propogateSignal' T.insertM           diff
+subSignal' = propogateSignal' (T.insertWith diff) (flip diff)
+addSignal  = unPrimePS addSignal'
+subSignal  = unPrimePS subSignal'
 
 -- edge operations {{{1
 addEdge'       :: (Ord nodeId, Ord time, Num time) => Life time -> nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
@@ -123,8 +124,8 @@ propogateEdge' mod overlap combine newProp edgeLife source target graph = foldr 
 	newEdge  = fmap (\e -> e { life = combine newLife (life e) }) oldEdge
 	propM    = maybe empty propogation
 	propLife = newProp (propM newEdge) (propM oldEdge)
-	graph'   = graph { edges = adjust (\e -> maybe e id newEdge) source target (edges graph) }
-	signals  = maybe def T.assocs (nodes graph >>= T.deletePrefix [source])
+	graph'   = graph { edges = adjust (flip fromMaybe newEdge) source target (edges graph) }
+	signals  = T.assocs . T.descend [source] $ nodes graph
 	delayM   = maybe 0 delay newEdge -- the 0 should never matter, because anything using it will be thrown away
 	mods     = recache source target : [mod (source:target:path) (intersect propLife (delayM +. lifetime)) | (path, lifetime) <- signals]
 
@@ -161,6 +162,5 @@ instance Ord nodeId => Stable (Graph nodeId) where
 recache :: (Ord nodeId, Ord time) => nodeId -> nodeId -> Graph nodeId time -> Graph nodeId time
 recache source target graph = graph { edges = adjust update source target (edges graph) } where
 	update e = e { signalCache = signal }
-	signal   = maybe def retrieve (nodes graph >>= T.deletePrefix [source])
-	retrieve = unions . map T.deeper . M.elems . M.delete target . T.children
-	-- @M.delete target@ makes sure we don't send a signal right back to the node it came from
+	signal   = T.query [source] . T.deleteSubTrie [source, target] $ nodes graph
+	-- @T.deleteSubTrie [source, target]@ makes sure we don't send a signal right back to the node it came from

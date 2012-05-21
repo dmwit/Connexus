@@ -1,106 +1,204 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, TypeSynonymInstances #-}
+-- boilerplate {{{
+{-# LANGUAGE FlexibleInstances, NoMonomorphismRestriction, TypeSynonymInstances #-}
 module TrieCache where
 
-import Life hiding (singleton)
 import Misc
 
 import Data.Default
 import Data.Map (Map)
+import Data.Monoid
 import Data.Tuple.All
 import qualified Data.Map as M
-
-data NonEmptyTrieCache k time = NonEmptyTrieCache {
+-- }}}
+-- types {{{
+-- A trie used to store elements of two commutative monoids and cache the two
+-- (monoid) sums of all the values that appear under a given prefix.
+data NonEmptyTrieCache k v = NonEmptyTrieCache {
 	prefix   :: [k],
-	here     :: Life time,
-	deeper   :: Life time,
-	children :: Map k (NonEmptyTrieCache k time)
+	value    :: Maybe v,
+	cache    :: v,
+	children :: Map k (NonEmptyTrieCache k v)
 	} deriving (Eq, Show, Read)
 
-type TrieCache k time = Maybe (NonEmptyTrieCache k time)
+type TrieCache k v = Maybe (NonEmptyTrieCache k v)
+-- }}}
+-- maintaining invariants {{{
+-- naming {{{
+{-
+We maintain two invariants that are not reflected in the type system:
+1. (compressed) If "value" is "Nothing", then there are at least two children.
+2. (coherent) The "cache" is the (monoid) sum of the "value" (if any) and the
+   "cache"s of the children. (Hence, it is the sum of all "value"s in the
+   entire trie.)
+There are 16 potentially useful functions:
+1. checking the invariant or reinstating the invariant,
+2. working on the compressed or coherent invariant,
+3. working on non-empty tries or possibly-empty tries, and
+4. "shallow" (the invariant applies to the current node) or "deep" (the
+   invariant applies to all nodes in the trie) versions.
+The grammar for function names in this section reflects these choices (with
+both the decisions to be made and the possible outcomes of those decisions in
+the same order as above):
+name ::= ("check" | "inv") ("Compressed" | "Coherent") ("NE" | "") ("" | "'")
+-}
+-- }}}
+-- check {{{
+checkCompressedNE t = maybe True (const (M.size (children t) >= 2)) (value t)
+checkCoherentNE   t = cache t == mconcat (caches t)
 
-instance (PPrint k, PPrint time) => PPrint (TrieCache k time) where pprint = maybe "" pprint
-instance (PPrint k, PPrint time) => PPrint (NonEmptyTrieCache k time) where
+checkDeepNE p t    = p t && all (checkDeepNE p) (M.elems (children t))
+checkCompressedNE' = checkDeepNE checkCompressedNE
+checkCoherentNE'   = checkDeepNE checkCoherentNE
+
+checkPossiblyEmpty = maybe True
+checkCompressed    = checkPossiblyEmpty checkCompressedNE
+checkCoherent      = checkPossiblyEmpty checkCoherentNE
+checkCompressed'   = checkPossiblyEmpty checkCompressedNE'
+checkCoherent'     = checkPossiblyEmpty checkCoherentNE'
+-- }}}
+-- reinstate {{{
+invCompressedNE t@(NonEmptyTrieCache { value = Nothing, children = c }) = case (M.size c, M.assocs c) of
+	(0, _)         -> Nothing
+	(1, [(k, t')]) -> Just t' { prefix = prefix t ++ k : prefix t' }
+	_              -> Just t
+invCompressedNE t = Just t
+invCoherentNE   t = t { cache = mconcat (caches t) }
+
+invCompressedNE' t = invCompressedNE t { children = M.mapMaybe invCompressedNE' (children t) }
+invCoherentNE'   t = invCoherentNE   t { children = fmap       invCoherentNE    (children t) }
+
+invPossiblyEmpty = (=<<)
+invCompressed    = invPossiblyEmpty invCompressedNE
+invCoherent      = invPossiblyEmpty (Just . invCoherentNE)
+invCompressed'   = invPossiblyEmpty invCompressedNE'
+invCoherent'     = invPossiblyEmpty (Just . invCoherentNE')
+-- }}}
+-- }}}
+-- PPrint {{{
+instance (PPrint k, PPrint v) => PPrint (TrieCache k v) where pprint = maybe "" pprint
+instance (PPrint k, PPrint v) => PPrint (NonEmptyTrieCache k v) where
 	pprint = go [] where
 		go pre t = pprint fullPre ++ ": " ++ signal ++ "\n" ++ deep where
 			fullPre = pre ++ prefix t
-			signal  = pprint (here t) ++ "/" ++ pprint (deeper t)
+			signal  = maybe "(branch only)" pprint (value t) ++ "/" ++ pprint (cache t)
 			deep    = M.assocs (children t) >>= \(pre', t') -> go (fullPre ++ [pre']) t'
+-- }}}
+-- creation {{{
+singletonNE :: [k] -> v -> NonEmptyTrieCache k v
+singletonNE path v = NonEmptyTrieCache path (Just v) v def
 
-singleton :: [k] -> Life time -> NonEmptyTrieCache k time
-singleton path l = NonEmptyTrieCache path l l def
+singleton :: [k] -> v -> TrieCache k v
+singleton path v = Just (singletonNE path v)
 
-empty :: TrieCache k time
+empty :: TrieCache k v
 empty = def
 
+unionWithNE :: (Ord k, Monoid v) => (v -> v -> v) -> NonEmptyTrieCache k v -> NonEmptyTrieCache k v -> NonEmptyTrieCache k v
+unionWithNE f trie trie' = invCoherentNE NonEmptyTrieCache {
+	prefix   = shared,
+	value    = unionWithMaybe f $ [value trie | null path] ++ [value trie' | null path'],
+	cache    = error "The impossible happened: the cache wasn't overwritten in unionWithNE.",
+	children = newChildren
+	} where
+	(shared, path, path') = splitPrefix (prefix trie) (prefix trie')
+	newChildren = case (path, path') of
+		([]  , []    ) -> M.unionWith  (unionWithNE f) (children trie) (children trie')
+		(p:ps, []    ) -> M.insertWith (unionWithNE f) p  trie  { prefix = ps } (children trie')
+		([]  , p':ps') -> M.insertWith (unionWithNE f) p' trie' { prefix = ps'} (children trie )
+		(p:ps, p':ps') -> M.fromList [(p, trie { prefix = ps }), (p', trie' { prefix = ps' })]
+
+unionMNE :: (Ord k, Monoid v) => NonEmptyTrieCache k v -> NonEmptyTrieCache k v -> NonEmptyTrieCache k v
+unionMNE trie trie' = NonEmptyTrieCache {
+	prefix   = shared,
+	value    = mconcat $ [value trie | null path] ++ [value trie' | null path'],
+	cache    = cache trie `mappend` cache trie',
+	children = newChildren
+	} where
+	(shared, path, path') = splitPrefix (prefix trie) (prefix trie')
+	newChildren = case (path, path') of
+		([]  , []    ) -> M.unionWith  unionMNE (children trie) (children trie')
+		(p:ps, []    ) -> M.insertWith unionMNE p  trie  { prefix = ps  } (children trie')
+		([]  , p':ps') -> M.insertWith unionMNE p' trie' { prefix = ps' } (children trie )
+		(p:ps, p':ps') -> M.fromList [(p, trie { prefix = ps }), (p', trie' { prefix = ps' })]
+
+adjustNE :: (Ord k, Monoid v) => (v -> v) -> [k] -> NonEmptyTrieCache k v -> NonEmptyTrieCache k v
+adjustNE f = go where
+	go path trie = case splitPrefix path (prefix trie) of
+		(shared, []  , []) -> invCoherentNE trie { value = fmap f (value trie) }
+		(shared, k:ks, []) -> invCoherentNE trie { children = M.adjust (go ks) k (children trie) }
+		_ -> trie
+
+deleteNE :: (Ord k, Monoid v) => [k] -> NonEmptyTrieCache k v -> TrieCache k v
+deleteNE path trie = case splitPrefix path (prefix trie) of
+	(_, []  , []) -> invBoth trie { value = Nothing }
+	(_, p:ps, []) -> invBoth trie { children = M.update (deleteNE ps) p (children trie) }
+	(_, _   , _ ) -> Just trie
+	where invBoth = invCoherent . invCompressedNE
+
+deleteSubTrieNE :: (Ord k, Monoid v) => [k] -> NonEmptyTrieCache k v -> TrieCache k v
+deleteSubTrieNE path trie = case splitPrefix path (prefix trie) of
+	(_, []  , _ ) -> Nothing
+	(_, p:ps, []) -> invBoth trie { children = M.update (deleteSubTrieNE ps) p (children trie) }
+	(_, _   , _ ) -> Just trie
+	where invBoth = invCoherent . invCompressedNE
+
+insertWithNE f = (unionWithNE f .) . singletonNE
+insertMNE = (unionMNE .) . singletonNE
+insertNE = insertWithNE const
+
+insertPossiblyEmpty f path v = Just . maybe (singletonNE path v) (f path v)
+insertWith f = insertPossiblyEmpty (insertWithNE f)
+insertM      = insertPossiblyEmpty insertMNE
+insert       = insertPossiblyEmpty insertNE
+
+adjust = (fmap .) . adjustNE
+delete = (=<<) . deleteNE
+deleteSubTrie = (=<<) . deleteSubTrieNE
+-- }}}
+-- query {{{
+descendNE :: Ord k => [k] -> NonEmptyTrieCache k v -> TrieCache k v
+descendNE path trie = case splitPrefix path (prefix trie) of
+	(shared, []  , ps ) -> Just (trie { prefix = ps })
+	(shared, p:ps, [] ) -> M.lookup p (children trie) >>= descendNE ps
+	(shared, _:_ , _:_) -> Nothing
+
+descend :: Ord k => [k] -> TrieCache k v -> TrieCache k v
+descend path trie = trie >>= descendNE path
+
+query :: (Ord k, Default v) => [k] -> TrieCache k v -> v
+query path = maybe def cache . descend path
+
+assocsNE :: NonEmptyTrieCache k v -> [([k], v)]
+assocsNE = go id where
+	go pre trie =
+		[(pre (prefix trie), v) | Just v <- [value trie]] ++
+		concatMap (\(k, t) -> go (pre . (prefix trie ++) . (k:)) t) (M.assocs (children trie))
+
+assocs :: TrieCache k v -> [([k], v)]
+assocs = maybe def assocsNE
+
+directChildrenNENE :: (Ord k, Monoid v) => NonEmptyTrieCache k v -> Map k (NonEmptyTrieCache k v)
+directChildrenNENE trie@(NonEmptyTrieCache { prefix = [] }) = children trie
+directChildrenNENE trie@(NonEmptyTrieCache { prefix = p:ps, value = Nothing }) = M.singleton p $               trie { prefix = ps }
+directChildrenNENE trie@(NonEmptyTrieCache { prefix = p:ps, value = Just _  }) = M.singleton p $ invCoherentNE trie { prefix = ps, value = Nothing }
+
+directChildrenNE :: (Ord k, Monoid v) => TrieCache k v -> Map k (NonEmptyTrieCache k v)
+directChildrenNE = maybe def directChildrenNENE
+
+directChildren :: (Ord k, Monoid v) => TrieCache k v -> Map k (TrieCache k v)
+directChildren = M.map Just . directChildrenNE
+-- }}}
+-- misc {{{
 on1 f t = upd1 (f (sel1 t)) t
+
 splitPrefix (p:ps) (p':ps') | p == p' = on1 (p:) (splitPrefix ps ps')
 splitPrefix ps ps' = ([], ps, ps')
 
-addLife :: (Ord k, Ord time) => [k] -> Life time -> TrieCache k time -> (TrieCache k time, Life time)
-addLife path l = on1 Just . addLife' path l
+caches t = [v | Just v <- [value t]] ++ [cache c | c <- M.elems (children t)]
 
-addLife' path l Nothing = (singleton path l, l)
-addLife' path l (Just trie) = case splitPrefix path (prefix trie) of
-	(shared, pre , p':ps') -> (NonEmptyTrieCache {
-		prefix   = shared,
-		here     = if null pre then l else def,
-		deeper   = union l (deeper trie),
-		children = M.fromList $ (p', trie { prefix = ps' }) : [(p, singleton ps l) | p:ps <- [pre]]
-		}, diff l (deeper trie))
-	(shared, p:ps, []    ) -> let (trie', l') = addLife' ps l (M.lookup p (children trie)) in (trie {
-		deeper   = union l' (deeper trie),
-		children = M.insert p trie' (children trie)
-		}, diff l' (deeper trie))
-	(shared, []  , []    ) -> (trie {
-		here     = union l (here trie),
-		deeper   = union l (deeper trie)
-		}, diff l (deeper trie))
-
-subLife :: (Ord k, Ord time) => [k] -> Life time -> TrieCache k time -> (TrieCache k time, Life time)
-subLife path l Nothing = (Nothing, def)
-subLife path l t@(Just trie) = case splitPrefix path (prefix trie) of
-	(shared, _   , _:_) -> (t, def)
-	(shared, p:ps, [] ) -> case (isEmpty (here trie), M.size newChildren) of
-		(True, 0) -> res
-		(True, 1) -> (Just firstNewChild {
-			prefix   = prefix trie ++ (\[(k, t)] -> k : prefix t) (M.assocs newChildren)
-			}, diff l' (deeper firstNewChild))
-		_ -> (Just trie {
-			deeper   = diff (deeper trie) l'',
-			children = newChildren
-			}, l'')
-		where
-		res@(t', l')  = subLife ps l (M.lookup p (children trie))
-		otherChildren = map deeper . M.elems . M.delete p . children $ trie
-		newChildren   = M.update (const t') p (children trie)
-		firstNewChild = head (M.elems newChildren)
-		l'' = diff l' (unions (here trie : otherChildren))
-	(shared, []  , [] ) -> case (isEmpty newHere, M.size (children trie)) of
-		(True, 0) -> (Nothing, here trie)
-		(True, 1) -> (Just firstChild {
-			prefix   = prefix trie ++ (\[(k, t)] -> k : prefix t) (M.assocs (children trie))
-			}, diff l (deeper firstChild))
-		_ -> (Just trie {
-			here     = newHere,
-			deeper   = diff (deeper trie) l''
-			}, l'')
-		where
-		newHere       = diff (here trie) l
-		otherChildren = map deeper . M.elems . children $ trie
-		firstChild    = head       . M.elems . children $ trie
-		l'' = diff l (unions (newHere : otherChildren))
-
-deletePrefix :: Ord k => [k] -> NonEmptyTrieCache k time -> TrieCache k time
-deletePrefix path trie = case splitPrefix path (prefix trie) of
-	(shared,  [] , ps ) -> Just (trie { prefix = ps })
-	(shared, p:ps, [] ) -> M.lookup p (children trie) >>= deletePrefix ps
-	(shared, _:_ , _:_) -> Nothing
-
-query :: Ord k => [k] -> TrieCache k time -> Life time
-query path trie = maybe def deeper (trie >>= deletePrefix path)
-
-assocs :: Ord time => NonEmptyTrieCache k time -> [([k], Life time)]
-assocs = assocs' id where
-	assocs' pre trie =
-		[(pre (prefix trie), here trie) | not . isEmpty . here $ trie] ++
-		concatMap (\(k, t) -> assocs' (pre . (prefix trie ++) . (k:)) t) (M.assocs (children trie))
+-- kind of like mconcat, except with f instead of mappend
+unionWithMaybe f vs = case [v | Just v <- vs] of
+	[]     -> Nothing
+	[m, n] -> Just (f m n)
+	(m:_)  -> Just m
+-- }}}
