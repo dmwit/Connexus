@@ -39,6 +39,9 @@ isEmpty = (empty ==)
 instance Stable Life where stable = mconcat . take 1 . map stable . unLife
 instance PPrint a => PPrint (Life a) where pprint (Life is) = pprint (reverse is)
 
+-- Reinstate invariant (3).
+strip = filter hasWidth
+
 -- Reinstate invariant (2). Preserves invariant (3).
 reorder = sortBy (flip $ comparing end)
 
@@ -47,9 +50,6 @@ collapse (i1 : i2 : is) | start i1 <=. end i2
 	= collapse (Interval (on min start i1 i2, end i1) : is)
 collapse (i:is) = i : collapse is
 collapse [] = []
-
--- Reinstate invariant (1).
-strip = filter hasWidth
 
 -- When combining many lists, can drop from O(m * n^2) to O(m * n * log (m*n))
 -- (where m is the number of lists and n is their average length) by doing a
