@@ -32,6 +32,9 @@ data Graph nodeId time = Graph {
 	} deriving (Eq, Show, Read)
 instance Default (Graph nodeId time) where def = Graph def def
 
+instance PPrint time => PPrint (Edge time) where
+	pprint edge = pprint (life edge) ++ "/" ++ pprint (signalCache edge)
+
 instance (PPrint nodeId, PPrint time, Ord time) => PPrint (Graph nodeId time) where
 	pprint (Graph es ns) = conns ++ cache where
 		conns = do
@@ -42,9 +45,7 @@ instance (PPrint nodeId, PPrint time, Ord time) => PPrint (Graph nodeId time) wh
 				" -> ",
 				pprint o,
 				": ",
-				pprint (life edge),
-				"/",
-				pprint (signalCache edge),
+				pprint edge,
 				"\n"
 				]
 		cache = pprint ns

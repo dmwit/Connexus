@@ -50,9 +50,9 @@ instance (Random a, Random b) => Random (a, b) where
 	random g = let (a, g') = random g; (b, g'') = random g' in ((a, b), g'')
 
 -- useful for debugging
-class PPrint a where
-	pprint :: a -> String
+class PPrint a where pprint :: a -> String
 
+instance PPrint Char     where pprint = return
 instance PPrint Int      where pprint = show
 instance PPrint Integer  where pprint = show
 instance PPrint Double   where pprint = show
