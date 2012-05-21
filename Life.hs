@@ -3,7 +3,7 @@ module Life (
 	Life(), unLife,
 	empty, singleton,
 	isEmpty, contains,
-	union, unions, diff, intersect, stripe,
+	union, unions, diff, intersect, complement, stripe,
 	contiguous,
 	NumLike(..)
 	) where
@@ -99,6 +99,7 @@ diff (Life is) (Life is') = Life (go is is') where
 	reStart = MaxPriority . unsafeEnd
 	reEnd   = MinPriority . unsafeStart
 
+complement l = singleton I.open `diff` l
 intersect  a = diff a . diff a
 contiguous t = Life . takeWhile (\i -> return t <= end i) . dropWhile (\i -> return t < start i) . unLife
 contains l t = not . isEmpty $ contiguous t l
