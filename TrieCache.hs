@@ -176,17 +176,6 @@ assocsNE = go id where
 
 assocs :: TrieCache k v -> [([k], v)]
 assocs = maybe def assocsNE
-
-directChildrenNENE :: (Ord k, Monoid v) => NonEmptyTrieCache k v -> Map k (NonEmptyTrieCache k v)
-directChildrenNENE trie@(NonEmptyTrieCache { prefix = [] }) = children trie
-directChildrenNENE trie@(NonEmptyTrieCache { prefix = p:ps, value = Nothing }) = M.singleton p $               trie { prefix = ps }
-directChildrenNENE trie@(NonEmptyTrieCache { prefix = p:ps, value = Just _  }) = M.singleton p $ invCoherentNE trie { prefix = ps, value = Nothing }
-
-directChildrenNE :: (Ord k, Monoid v) => TrieCache k v -> Map k (NonEmptyTrieCache k v)
-directChildrenNE = maybe def directChildrenNENE
-
-directChildren :: (Ord k, Monoid v) => TrieCache k v -> Map k (TrieCache k v)
-directChildren = M.map Just . directChildrenNE
 -- }}}
 -- misc {{{
 on1 f t = upd1 (f (sel1 t)) t

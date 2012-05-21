@@ -156,7 +156,7 @@ instance Ord nodeId => Stable (Graph nodeId) where
 	-- cycle; to account for this, simply conservatively delay the stable time of
 	-- the nodes by the maximal delay of any edge in the graph
 	stable g = fmap (maxEdge g +) (maxNode g) where
-		maxNode = mconcat . map (stable . T.query []) . M.elems . T.directChildren . nodes
+		maxNode = mconcat . map (stable . snd) . T.assocs . nodes
 		maxEdge = maximum . (0:) . map delay . concatMap M.elems . M.elems . edges
 
 -- optimization idea: instead of recomputing the whole damn lifetime, just incrementally update it
