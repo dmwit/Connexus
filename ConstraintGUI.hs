@@ -1,4 +1,4 @@
--- boilerplate {{{
+-- boilerplate {{{1
 import Constraint
 import Direction
 import Grid hiding (width, height)
@@ -13,7 +13,8 @@ import Data.IORef
 import Graphics.UI.Gtk hiding (Viewport, viewportNew)
 import Graphics.UI.Gtk.Gdk.EventM (MouseButton(..))
 import System.Environment
--- }}}
+
+-- code {{{1
 main = do
 	initGUI
 	args    <- getArgs

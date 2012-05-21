@@ -1,4 +1,4 @@
--- boilerplate {{{
+-- boilerplate {{{1
 {-# LANGUAGE FlexibleContexts, NoMonomorphismRestriction #-}
 module Lock where
 
@@ -11,7 +11,8 @@ import Data.IORef
 import Data.Set (Set)
 import Graphics.Rendering.Cairo
 import qualified Data.Set as Set
--- }}}
+
+-- code {{{1
 type Lock a = Set a
 
 cond         :: (Ord a, MonadState (Lock a) m) => a -> m b -> m b -> m b

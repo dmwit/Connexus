@@ -13,5 +13,4 @@
 * two-sided puzzle with links from one layer to the other or something
 * change the order for constraint solving: outside-in, but squares with only one solution sort last
 * timer + rotation countdown + new-game dialog + lock count
-* change from {{{}}} style to {{{1 style everywhere
 * think about zippers for TrieCache (and use them instead of repeating the splitPrefix idiom everywhere)

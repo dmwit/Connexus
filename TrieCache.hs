@@ -1,4 +1,4 @@
--- boilerplate {{{
+-- boilerplate {{{1
 {-# LANGUAGE FlexibleInstances, NoMonomorphismRestriction, TypeSynonymInstances #-}
 module TrieCache where
 
@@ -9,8 +9,8 @@ import Data.Map (Map)
 import Data.Monoid
 import Data.Tuple.All
 import qualified Data.Map as M
--- }}}
--- types {{{
+
+-- types {{{1
 -- A trie used to store elements of two commutative monoids and cache the two
 -- (monoid) sums of all the values that appear under a given prefix.
 data NonEmptyTrieCache k v = NonEmptyTrieCache {
@@ -21,9 +21,9 @@ data NonEmptyTrieCache k v = NonEmptyTrieCache {
 	} deriving (Eq, Show, Read)
 
 type TrieCache k v = Maybe (NonEmptyTrieCache k v)
--- }}}
--- maintaining invariants {{{
--- naming {{{
+
+-- maintaining invariants {{{1
+-- naming {{{2
 {-
 We maintain two invariants that are not reflected in the type system:
 1. (compressed) If "value" is "Nothing", then there are at least two children.
@@ -41,8 +41,8 @@ both the decisions to be made and the possible outcomes of those decisions in
 the same order as above):
 name ::= ("check" | "inv") ("Compressed" | "Coherent") ("NE" | "") ("" | "'")
 -}
--- }}}
--- check {{{
+
+-- check {{{2
 checkCompressedNE t = maybe True (const (M.size (children t) >= 2)) (value t)
 checkCoherentNE   t = cache t == mconcat (caches t)
 
@@ -55,8 +55,8 @@ checkCompressed    = checkPossiblyEmpty checkCompressedNE
 checkCoherent      = checkPossiblyEmpty checkCoherentNE
 checkCompressed'   = checkPossiblyEmpty checkCompressedNE'
 checkCoherent'     = checkPossiblyEmpty checkCoherentNE'
--- }}}
--- reinstate {{{
+
+-- reinstate {{{2
 invCompressedNE t@(NonEmptyTrieCache { value = Nothing, children = c }) = case (M.size c, M.assocs c) of
 	(0, _)         -> Nothing
 	(1, [(k, t')]) -> Just t' { prefix = prefix t ++ k : prefix t' }
@@ -72,9 +72,8 @@ invCompressed    = invPossiblyEmpty invCompressedNE
 invCoherent      = invPossiblyEmpty (Just . invCoherentNE)
 invCompressed'   = invPossiblyEmpty invCompressedNE'
 invCoherent'     = invPossiblyEmpty (Just . invCoherentNE')
--- }}}
--- }}}
--- PPrint {{{
+
+-- PPrint {{{1
 instance (PPrint k, PPrint v) => PPrint (TrieCache k v) where pprint = maybe "" pprint
 instance (PPrint k, PPrint v) => PPrint (NonEmptyTrieCache k v) where
 	pprint = go [] where
@@ -82,8 +81,8 @@ instance (PPrint k, PPrint v) => PPrint (NonEmptyTrieCache k v) where
 			fullPre = pre ++ prefix t
 			signal  = maybe "(branch only)" pprint (value t) ++ "/" ++ pprint (cache t)
 			deep    = M.assocs (children t) >>= \(pre', t') -> go (fullPre ++ [pre']) t'
--- }}}
--- creation {{{
+
+-- creation {{{1
 singletonNE :: [k] -> v -> NonEmptyTrieCache k v
 singletonNE path v = NonEmptyTrieCache path (Just v) v def
 
@@ -154,8 +153,8 @@ insert       = insertPossiblyEmpty insertNE
 adjust = (fmap .) . adjustNE
 delete = (=<<) . deleteNE
 deleteSubTrie = (=<<) . deleteSubTrieNE
--- }}}
--- query {{{
+
+-- query {{{1
 descendNE :: Ord k => [k] -> NonEmptyTrieCache k v -> TrieCache k v
 descendNE path trie = case splitPrefix path (prefix trie) of
 	(shared, []  , ps ) -> Just (trie { prefix = ps })
@@ -176,8 +175,8 @@ assocsNE = go id where
 
 assocs :: TrieCache k v -> [([k], v)]
 assocs = maybe def assocsNE
--- }}}
--- misc {{{
+
+-- misc {{{1
 on1 f t = upd1 (f (sel1 t)) t
 
 splitPrefix (p:ps) (p':ps') | p == p' = on1 (p:) (splitPrefix ps ps')
@@ -190,4 +189,3 @@ unionWithMaybe f vs = case [v | Just v <- vs] of
 	[]     -> Nothing
 	[m, n] -> Just (f m n)
 	(m:_)  -> Just m
--- }}}

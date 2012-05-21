@@ -1,4 +1,4 @@
--- boilerplate {{{
+-- boilerplate {{{1
 module Constraint where
 
 import Direction
@@ -15,8 +15,8 @@ import Data.Set (Set)
 import Graphics.Rendering.Cairo
 
 import qualified Data.Set as Set
--- }}}
--- constraint properties {{{
+
+-- constraint properties {{{1
 type Constraint = Set (Set Direction)
 
 setAll        :: Ord a => (a -> Bool) -> (Set a -> Bool)
@@ -42,8 +42,8 @@ mightPoint    = flip (setAny . Set.member)
 mightNotPoint = flip (setAny . notMember )
 point = Set.filter . Set.member
 avoid = Set.filter . notMember
--- }}}
--- rules {{{
+
+-- rules {{{1
 data Rule = Rule {
 	offsets   :: [Point],
 	constrain :: [Constraint] -> Constraint -> Maybe (Constraint -> Constraint)
@@ -64,8 +64,8 @@ connectRule dir = Rule {
 allRules =
 	map avoidRule   [minBound..maxBound] ++
 	map connectRule [minBound..maxBound]
--- }}}
--- solver {{{
+
+-- solver {{{1
 data Solver = Solver {
 	constraints :: IOArray Point Constraint,
 	dirty       :: IORef (Set Point)
@@ -108,8 +108,8 @@ step solver@(Solver { constraints = cs, dirty = dref }) = do
 	case Set.minView d of
 		Nothing       -> return ()
 		Just (pos, d) -> readArray cs pos >>= \c -> runRules c pos d solver
--- }}}
--- rendering {{{
+
+-- rendering {{{1
 update :: Solver -> IO (Render ())
 update (Solver { constraints = cs, dirty = dref }) = do
 	drawC <- renderConstraints cs
@@ -145,8 +145,8 @@ renderDirty poss = do
 	where
 	circle' x y = moveTo (x + 0.1) (y + 0.1) >> arc x y 0.1 0 (2 * pi)
 	circle = uncurry (circle' `on` fromIntegral)
--- }}}
--- creating {{{
+
+-- creating {{{1
 solverFromGrid :: IOArray Point [Connection] -> IO Solver
 solverFromGrid nodeShape = do
 	b@((xlo, ylo), (xhi, yhi)) <- getBounds nodeShape
@@ -156,4 +156,3 @@ solverFromGrid nodeShape = do
 		connections <- readArray nodeShape pos
 		writeArray cs pos (Set.fromList [Set.fromList (map (rotation . direction) connections) | rotation <- [id, clockwise, aboutFace, counterclockwise]])
 	return Solver { constraints = cs, dirty = dref }
--- }}}

@@ -1,4 +1,4 @@
--- boilerplate {{{
+-- boilerplate {{{1
 {-# LANGUAGE NoMonomorphismRestriction #-}
 module Viewport (
 	Stabilization(..),
@@ -20,8 +20,8 @@ import Data.Maybe
 import Graphics.Rendering.Cairo
 import Graphics.UI.Gtk hiding (Viewport, viewportNew)
 import Graphics.UI.Gtk.Gdk.EventM
--- }}}
--- types {{{
+
+-- types {{{1
 data PointerLocation = PointerLocation { locationTime :: TimeStamp, pos :: (Double, Double) } deriving (Eq, Ord, Show, Read)
 data Drag
 	= Press  {           current :: PointerLocation }
@@ -43,17 +43,16 @@ data Viewport = Viewport {
 	position          :: Position,
 	delay             :: Int
 	}
--- instances {{{
+-- instances {{{2
 instance Default a => Default (Render a) where def = return def
 instance Default Stabilization  where def = Never
 instance Default Position       where def = Position def def def { dimension = 1 } def { dimension = 1 }
 instance Default Dimension      where def = Dimension def def
 instance Default AnimationState where def = Stationary
 instance Default Viewport       where def = Viewport def def def def 25 -- ~40 fps
--- }}}
--- }}}
--- animation {{{
--- pure computations {{{
+
+-- animation {{{1
+-- pure computations {{{2
 onCenterX, onCenterY, onWidth, onHeight :: (Dimension -> Dimension) -> (Position -> Position)
 onCenterX f p = p { centerX = f (centerX p) }
 onCenterY f p = p { centerY = f (centerY p) }
@@ -98,8 +97,8 @@ pause now dim = Dimension {
 	dimension = freeze now dim,
 	animation = Stationary
 	}
--- }}}
--- converting between screen and world coordinates {{{
+
+-- converting between screen and world coordinates {{{2
 type Coord = (Double, Double)
 data Conversion = Conversion {
 	worldFromScreen    :: Coord -> Coord,
@@ -126,10 +125,9 @@ conversionAt now posRef = conversionPure
 
 conversion :: IORef Position -> EventM a Conversion
 conversion posRef = time >>= flip conversionAt posRef
--- }}}
--- }}}
--- event handling {{{
--- timeouts {{{
+
+-- event handling {{{1
+-- timeouts {{{2
 fromStableTime :: MaxPriority Double -> Stabilization
 fromStableTime (MaxPriority Nothing ) = Already
 fromStableTime (MaxPriority (Just t)) = ExactTime t
@@ -153,8 +151,8 @@ setStableTime da delay stableRef stable = do
 	writeIORef stableRef stable
 	when_ (stableOld == Already && stable /= Already)
 	      (timeoutAdd (stableTimeout da stableRef) delay)
--- }}}
--- expose {{{
+
+-- expose {{{2
 exposeViewport :: IORef Position -> Render a -> EventM b Bool
 exposeViewport posRef draw = do
 	dw      <- eventWindow
@@ -167,8 +165,8 @@ exposeViewport posRef draw = do
 		translate (-tlx) (-tly)
 		draw
 	return True
--- }}}
--- zooming {{{
+
+-- zooming {{{2
 zoomViewport :: DrawingArea -> IORef Position -> Int -> EventM EScroll Bool
 zoomViewport da posRef delay = tryEvent $ do
 	sd <- eventScrollDirection
@@ -184,8 +182,8 @@ zoomViewport da posRef delay = tryEvent $ do
 	zoomFactor ScrollUp   = 0.5
 	zoomFactor ScrollDown = 2
 	zoomFactor _ = 1
--- }}}
--- panning {{{
+
+-- panning {{{2
 -- pointerLocation :: (HasTime a, HasCoordinates a) => EventM a PointerLocation
 pointerLocation = liftM2 PointerLocation eventTime eventCoordinates
 
@@ -249,8 +247,8 @@ reposition da posRef old new = do
 		centerY = Dimension { dimension = (dimension . centerY) pos + oldY - newY, animation = Stationary }
 		}
 	liftIO $ widgetQueueDraw da
--- }}}
--- }}}
+
+-- viewportNew {{{1
 viewportNew :: Viewport -> IO DrawingArea
 viewportNew v = do
 	da        <- drawingAreaNew
