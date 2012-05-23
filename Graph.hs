@@ -82,13 +82,13 @@ querySignals g n = T.query [n] (nodes g)
 --    * in the GUI thread, just stick an update in the queue
 --    * in the worker thread, pop updates off, compute them, and update the
 --      graph that the GUI thread is looking at
-propogateSignal' update diff path@(~(source:rest)) lifetime graph
+propagateSignal' update diff path@(~(source:rest)) lifetime graph
 	| null path          = graph
 	| isEmpty lifetime   = graph
 	| source `elem` rest = graph
 	| otherwise          = foldr ($) graph { nodes = nodes' } modifications where
 	outgoing      = M.assocs (findWithDef source (edges graph))
-	modifications = [recache source target . propogateSignal' update diff (target:path) (shift edge) | (target, edge) <- outgoing]
+	modifications = [recache source target . propagateSignal' update diff (target:path) (shift edge) | (target, edge) <- outgoing]
 	shift edge    = intersect (propogation edge) (delay edge +. lifetime')
 	nodes'        = update path lifetime (nodes graph)
 	lifetime'     = diff (T.query path nodes') (T.query path (nodes graph))
@@ -100,8 +100,8 @@ subSignal' :: (Ord nodeId, Ord time, Num time) => [nodeId] -> Life time -> Graph
 addSignal  :: (Ord nodeId, Ord time, Num time) =>  nodeId  ->      time -> Graph nodeId time -> Graph nodeId time
 subSignal  :: (Ord nodeId, Ord time, Num time) =>  nodeId  ->      time -> Graph nodeId time -> Graph nodeId time
 
-addSignal' = propogateSignal' T.insertM diff
-subSignal' = propogateSignal' (T.insertWith (flip diff)) (flip diff)
+addSignal' = propagateSignal' T.insertM diff
+subSignal' = propagateSignal' (T.insertWith (flip diff)) (flip diff)
 addSignal  = unPrimePS addSignal'
 subSignal  = unPrimePS subSignal'
 
@@ -119,7 +119,7 @@ initializeEdge :: (Ord nodeId, Ord time, Num time) =>      time -> nodeId -> nod
 -- newProp: the old edge and the new edge may have different propogation characteristics; newProp tells how to pick out the important changes in this characteristic
 -- source, target: which nodes the edge connects
 -- edgeLife: the change to the lifetime of the edge
-propogateEdge' mod overlap combine newProp edgeLife source target graph = foldr ($) graph' mods where
+propagateEdge' mod overlap combine newProp edgeLife source target graph = foldr ($) graph' mods where
 	oldEdge  = lookup source target (edges graph)
 	newLife  = maybe empty (overlap edgeLife . life) oldEdge
 	newEdge  = fmap (\e -> e { life = combine newLife (life e) }) oldEdge
@@ -130,8 +130,8 @@ propogateEdge' mod overlap combine newProp edgeLife source target graph = foldr 
 	delayM   = maybe 0 delay newEdge -- the 0 should never matter, because anything using it will be thrown away
 	mods     = recache source target : [mod (target:source:path) (intersect propLife (delayM +. lifetime)) | (path, lifetime) <- signals]
 
-addEdge' = propogateEdge' addSignal' diff      union       diff
-subEdge' = propogateEdge' subSignal' intersect (flip diff) (flip diff)
+addEdge' = propagateEdge' addSignal' diff      union       diff
+subEdge' = propagateEdge' subSignal' intersect (flip diff) (flip diff)
 addEdge  = unPrime addEdge'
 subEdge  = unPrime subEdge'
 unPrime f' now source target = f' (singleton (openRight now)) source target
