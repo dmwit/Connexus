@@ -11,6 +11,7 @@
 * make drag require Ctrl or something so that middle-click is less annoying
 * wrapping/klein bottle mode
 * two-sided puzzle with links from one layer to the other or something
-* change the order for constraint solving: outside-in, but squares with only one solution sort last
+* change the order for constraint solving: outside-in, but squares with only one solution sort last (better yet, choose squares whose neighbors are highly constrained -- outside-in strategy comes for free with this approach)
 * timer + rotation countdown + new-game dialog + lock count
 * think about zippers for TrieCache (and use them instead of repeating the splitPrefix idiom everywhere)
+* biggest performance hit right now is rendering -- so don't render the whole screen every frame
