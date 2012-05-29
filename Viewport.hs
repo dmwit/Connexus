@@ -1,5 +1,5 @@
 -- boilerplate {{{1
-{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE MultiParamTypeClasses, NoMonomorphismRestriction, TypeFamilies #-}
 module Viewport (
 	Stabilization(..),
 	Position(..),
@@ -12,12 +12,15 @@ module Viewport (
 
 import Misc
 import Bounds
+import qualified Rectangle as Connexus
 
 import Control.Monad
+import Control.Monad.Trans
 import Data.Default
 import Data.IORef
 import Graphics.Rendering.Cairo
-import Graphics.UI.Gtk hiding (Viewport, viewportNew)
+import Graphics.UI.Gtk hiding (Rectangle(..), Region(..), Screen(..), Viewport, viewportNew)
+import qualified Graphics.UI.Gtk as Gtk (Rectangle(..), Region(..))
 
 -- types {{{1
 data PointerLocation = PointerLocation { locationTime :: TimeStamp, pos :: (Double, Double) } deriving (Eq, Ord, Show, Read)
@@ -34,9 +37,10 @@ data AnimationState
 	| Goal   { startTime, duration, distance      :: Double }
 	deriving (Eq, Ord, Show, Read)
 
+type RegionRenderer = Connexus.Region Double -> Render ()
 data Viewport = Viewport {
 	stabilizationTime :: IO Stabilization,
-	draw              :: Render (),
+	draw              :: RegionRenderer,
 	click             :: MouseButton -> Double -> Double -> IO (),
 	position          :: Position,
 	delay             :: Int
@@ -99,10 +103,56 @@ pause now dim = Dimension {
 -- converting between screen and world coordinates {{{2
 type Coord = (Double, Double)
 data Conversion = Conversion {
-	worldFromScreen    :: Coord -> Coord,
-	screenFromWorld    :: Coord -> Coord,
+	worldFromScreen_   :: Coord -> Coord,
+	screenFromWorld_   :: Coord -> Coord,
 	pixelsPerWorldUnit :: Double
 	}
+
+-- Convertible class {{{3
+type family World screen
+type family Screen world
+
+type instance World Double = Double
+type instance World (a,b) = (World a, World b) -- dang we're lucky
+type instance World Gtk.Rectangle = Connexus.Rectangle Double
+type instance World [a] = [World a]
+
+type instance Screen Double = Double
+type instance Screen (a,b) = (Screen a, Screen b) -- so lucky
+type instance Screen (Connexus.Rectangle Double) = Gtk.Rectangle
+type instance Screen [a] = [Screen a]
+
+class (World screen ~ world, Screen world ~ screen) => Convertible world screen where
+	worldFromScreen :: Conversion -> screen -> world
+	screenFromWorld :: Conversion -> world -> screen
+
+instance Convertible Double Double where
+	worldFromScreen con len = len / pixelsPerWorldUnit con
+	screenFromWorld con len = len * pixelsPerWorldUnit con
+
+instance (a ~ Double, b ~ Double, c ~ Double, d ~ Double) => Convertible (a,b) (c,d) where
+	worldFromScreen = worldFromScreen_
+	screenFromWorld = screenFromWorld_
+
+instance a ~ Double => Convertible (Connexus.Rectangle a) Gtk.Rectangle where
+	worldFromScreen con (Gtk.Rectangle x y w h) = Connexus.Rectangle x' y' w' h' where
+		fi = fromIntegral
+		(x', y') = worldFromScreen con (fi x, fi y)
+		[w', h'] = map (worldFromScreen con . fi) [w, h]
+	-- make a bounding box that's *bigger* than the requested one, if necessary
+	screenFromWorld con (Connexus.Rectangle x y w h) = Gtk.Rectangle x' y' w' h' where
+		(x'_, y'_) = screenFromWorld con (x, y)
+		[w'_, h'_] = map (screenFromWorld con) [w, h]
+		[x' , y' ] = zipWith (whenPositive floor ceiling) [w, h] [x'_, y'_]
+		[w' , h' ] = map enlarge [w'_, h'_]
+
+		whenPositive f g p = if p >= 0 then f else g
+		enlarge x = whenPositive ceiling floor x x
+
+instance Convertible a b => Convertible [a] [b] where
+	worldFromScreen = map . worldFromScreen
+	screenFromWorld = map . screenFromWorld
+-- }}}
 
 conversionPure :: (Int, Int) -> Double -> Position -> Conversion
 conversionPure (dww', dwh') now pos = Conversion wfs sfw ppwu where
@@ -151,17 +201,18 @@ setStableTime da delay stableRef stable = do
 	      (timeoutAdd (stableTimeout da stableRef) delay)
 
 -- expose {{{2
-exposeViewport :: IORef Position -> Render a -> EventM b Bool
+exposeViewport :: IORef Position -> RegionRenderer -> EventM EExpose Bool
 exposeViewport posRef draw = do
 	dw      <- eventWindow
 	con     <- conversion posRef
+	region  <- eventRegion >>= liftIO . regionGetRectangles
 	let
 		length     = pixelsPerWorldUnit con
 		(tlx, tly) = worldFromScreen con (0, 0)
 	liftIO . renderWithDrawable dw $ do
 		scale length length
 		translate (-tlx) (-tly)
-		draw
+		draw $ worldFromScreen con region
 	return True
 
 -- zooming {{{2
@@ -214,9 +265,10 @@ releaseViewport da panRef posRef stableRef v = do
 	case (b, pan) of
 		(MiddleButton, Motion {}) -> when (ts == locationTime (current pan)) . liftIO $ do
 			let
+				d :: Num a => (PointerLocation -> a) -> a
 				d g = g (current pan) - g (previous pan)
-				dx  = d (fst . pos) / pixelsPerWorldUnit con
-				dy  = d (snd . pos) / pixelsPerWorldUnit con
+				dx  = worldFromScreen con $ d (fst . pos)
+				dy  = worldFromScreen con $ d (snd . pos)
 				dt  = fromIntegral (d locationTime) / 1000
 			modifyIORef posRef . onCenterX $ throw now (-dx / dt)
 			modifyIORef posRef . onCenterY $ throw now (-dy / dt)

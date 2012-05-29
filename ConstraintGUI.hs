@@ -20,7 +20,7 @@ main = do
 	solver  <- solverFromGrid (pieces grid)
 	da      <- viewportNew def {
 		stabilizationTime = return Never,
-		draw     = liftIO (step solver) >> Constraint.update solver,
+		draw     = \_ -> liftIO (step solver) >> Constraint.update solver,
 		delay    = 15,
 		position = Position {
 			centerX = def { dimension = (fromIntegral w - 1) / 2 }, centerY = def { dimension = (fromIntegral h - 1) / 2 },

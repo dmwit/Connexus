@@ -43,8 +43,8 @@ main = do
 	lockRef <- newIORef def
 	da      <- viewportNew def {
 		stabilizationTime = liftM (fromStableTime . stable) (readIORef (graph grid)),
-		draw     = drawGridLock grid lockRef,
-		click    = clickGrid    grid lockRef,
+		draw     = \_ -> drawGridLock grid lockRef,
+		click    =       clickGrid    grid lockRef,
 		position = Position {
 			centerX = def { dimension = (fromIntegral w - 1) / 2 }, centerY = def { dimension = (fromIntegral h - 1) / 2 },
 			width   = def { dimension =  fromIntegral w          }, height  = def { dimension =  fromIntegral h          }
