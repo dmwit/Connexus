@@ -29,8 +29,7 @@ drawGridLock grid lockRef = do
 	liftIO (readIORef lockRef) >>= Lock.update
 
 main = do
-	initGUI
-	args    <- getArgs
+	args    <- initGUI
 	let (w, h) = case map reads args of
 		[[(w, "")], [(h, "")]] -> (w, h)
 		_ -> (11, 11)
