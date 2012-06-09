@@ -13,6 +13,7 @@ module Viewport (
 import Misc
 import Bounds
 import qualified Rectangle as Connexus
+import Rounding
 
 import Control.Monad
 import Control.Monad.Trans
@@ -136,18 +137,15 @@ instance (a ~ Double, b ~ Double, c ~ Double, d ~ Double) => Convertible (a,b) (
 
 instance a ~ Double => Convertible (Connexus.Rectangle a) Gtk.Rectangle where
 	worldFromScreen con (Gtk.Rectangle x y w h) = Connexus.Rectangle x' y' w' h' where
-		fi = fromIntegral
 		(x', y') = worldFromScreen con (fi x, fi y)
 		[w', h'] = map (worldFromScreen con . fi) [w, h]
 	-- make a bounding box that's *bigger* than the requested one, if necessary
 	screenFromWorld con (Connexus.Rectangle x y w h) = Gtk.Rectangle x' y' w' h' where
 		(x'_, y'_) = screenFromWorld con (x, y)
-		[w'_, h'_] = map (screenFromWorld con) [w, h]
 		[x' , y' ] = zipWith (whenPositive floor ceiling) [w, h] [x'_, y'_]
-		[w' , h' ] = map enlarge [w'_, h'_]
+		[w' , h' ] = map (awayFromZero . screenFromWorld con) [x+w - fi x', y+h - fi y']
 
 		whenPositive f g p = if p >= 0 then f else g
-		enlarge x = whenPositive ceiling floor x x
 
 instance Convertible a b => Convertible [a] [b] where
 	worldFromScreen = map . worldFromScreen
@@ -157,7 +155,7 @@ instance Convertible a b => Convertible [a] [b] where
 conversionPure :: (Int, Int) -> Double -> Position -> Conversion
 conversionPure (dww', dwh') now pos = Conversion wfs sfw ppwu where
 	[cx, cy, w, h] = map (freeze now) . sequence [centerX, centerY, width, height] $ pos
-	[dww, dwh]     = map (fromIntegral . max 1) [dww', dwh']
+	[dww, dwh]     = map (fi . max 1) [dww', dwh']
 	ppwu           = min (dww / w) (dwh / h)
 	both f (x, y)  = (f dww cx x, f dwh cy y)
 	wfs            = both wfsSingle
@@ -269,7 +267,7 @@ releaseViewport da panRef posRef stableRef v = do
 				d g = g (current pan) - g (previous pan)
 				dx  = worldFromScreen con $ d (fst . pos)
 				dy  = worldFromScreen con $ d (snd . pos)
-				dt  = fromIntegral (d locationTime) / 1000
+				dt  = fi (d locationTime) / 1000
 			modifyIORef posRef . onCenterX $ throw now (-dx / dt)
 			modifyIORef posRef . onCenterY $ throw now (-dy / dt)
 			-- make sure we're firing off update requests
