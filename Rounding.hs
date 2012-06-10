@@ -1,3 +1,4 @@
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module Rounding where
 
 {-# INLINE towardZero          #-}
