@@ -95,8 +95,8 @@ diff (Life is) (Life is') = Life (go is is') where
 		| end   i ==  end   i' = go t is'
 		| otherwise            = Interval (reStart i', end i) : go t is'
 
-	reStart = MaxPriority . unsafeEnd
-	reEnd   = MinPriority . unsafeStart
+	reStart = swapInfty . end
+	reEnd   = swapInfty . start
 
 complement l = singleton I.open `diff` l
 intersect  a = diff a . diff a

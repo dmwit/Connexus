@@ -1,4 +1,4 @@
-{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE NoMonomorphismRestriction, FlexibleInstances #-}
 module Interval (
 	Interval(..), start, end, unsafeStart, unsafeEnd,
 	open, openLeft, openRight, closed,
@@ -12,7 +12,7 @@ import Misc
 import Data.Function
 import Data.Monoid
 
-newtype Interval a = Interval (MaxPriority a, MinPriority a) deriving (Show, Read)
+newtype Interval a = Interval (NegInf a, PosInf a) deriving (Show, Read)
 instance Functor Interval where fmap f (Interval (b, e)) = Interval (fmap f b, fmap f e)
 
 instance Ord a => Eq (Interval a) where
@@ -21,15 +21,15 @@ instance Ord a => Eq (Interval a) where
 
 instance Stable Interval where stable i = maybe (start i) return (unsafeEnd i)
 
-instance PPrint a => PPrint (MaxPriority a) where pprint (MaxPriority n) = maybe "-infty" pprint n
-instance PPrint a => PPrint (MinPriority a) where pprint (MinPriority n) = maybe  "infty" pprint n
-instance PPrint a => PPrint (Interval    a) where pprint (Interval    i) = pprint i
+instance PPrint a => PPrint (NegInf   a) where pprint = inf "-infty" pprint
+instance PPrint a => PPrint (PosInf   a) where pprint = inf  "infty" pprint
+instance PPrint a => PPrint (Interval a) where pprint (Interval i) = pprint i
 
 start (Interval (b, e)) = b
 end   (Interval (b, e)) = e
 
-unsafeStart (Interval (MaxPriority b, MinPriority e)) = b
-unsafeEnd   (Interval (MaxPriority b, MinPriority e)) = e
+unsafeStart (Interval (b, e)) = inf Nothing Just b
+unsafeEnd   (Interval (b, e)) = inf Nothing Just e
 
 open          = Interval (mempty  , mempty  )
 openLeft    e = Interval (mempty  , return e)
@@ -63,8 +63,9 @@ class NumLike f where
 	a *. f = f .* a
 	a -. f = a +. (-1) *. f
 
+swapInterval (Interval (b, e)) = Interval (swapInfty e, swapInfty b)
 instance NumLike Interval where
 	t +. i = fmap (t+) i
 	t *. i | t >= 0 = fmap (t*) i
-	t *. (Interval (MaxPriority b, MinPriority e)) = fmap (t*) (Interval (MaxPriority e, MinPriority b))
-	t /. (Interval (MaxPriority b, MinPriority e)) = t *. fmap recip (Interval (MaxPriority e, MinPriority b))
+	t *. i = fmap (t*) (swapInterval i)
+	t /. i = t *. fmap recip (swapInterval i)

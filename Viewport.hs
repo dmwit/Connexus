@@ -163,20 +163,23 @@ conversionPure (dww', dwh') now pos = Conversion wfs sfw ppwu where
 	wfsSingle screenLength centerWorld screenCoordinate = centerWorld      + (screenCoordinate - screenLength / 2) / ppwu
 	sfwSingle screenLength centerWorld worldCoordinate  = screenLength / 2 + (worldCoordinate  - centerWorld     ) * ppwu
 
-conversionAt :: Double -> IORef Position -> EventM a Conversion
-conversionAt now posRef = conversionPure
-	`fmap` (eventWindow >>= liftIO . drawableGetSize)
+conversionImpure :: MonadIO m => DrawWindow -> Double -> IORef Position -> m Conversion
+conversionImpure dw now posRef = liftIO $ conversionPure
+	`fmap` drawableGetSize dw
 	`ap`   return now
-	`ap`   liftIO (readIORef posRef)
+	`ap`   readIORef posRef
+
+conversionAt :: Double -> IORef Position -> EventM a Conversion
+conversionAt now posRef = eventWindow >>= \dw -> conversionImpure dw now posRef
 
 conversion :: IORef Position -> EventM a Conversion
 conversion posRef = time >>= flip conversionAt posRef
 
 -- event handling {{{1
 -- timeouts {{{2
-fromStableTime :: MaxPriority Double -> Stabilization
-fromStableTime (MaxPriority Nothing ) = Already
-fromStableTime (MaxPriority (Just t)) = ExactTime t
+fromStableTime :: NegInf Double -> Stabilization
+fromStableTime Infinity   = Already
+fromStableTime (Finite t) = ExactTime t
 
 stableTimeout :: DrawingArea -> IORef Stabilization -> IO Bool
 stableTimeout da stableRef = do

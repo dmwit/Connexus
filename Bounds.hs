@@ -1,22 +1,34 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, MultiParamTypeClasses, FlexibleInstances, StandaloneDeriving #-}
 module Bounds (
-	module Data.Monoid.Ord,
+	module Data.Monoid.Inf,
+	inf, swapInfty,
 	MixOrd(..), Stable(..),
 	(>.), (<.), (>=.), (<=.), (==.)
 	) where
 
-import Data.Monoid.Ord
+import Data.Monoid.Inf hiding (minimum, maximum)
 
-deriving instance Monad MaxPriority
-deriving instance Monad MinPriority
+instance Functor (Inf p) where
+	fmap f Infinity = Infinity
+	fmap f (Finite v) = Finite (f v)
+
+instance Monad (Inf p) where
+	return x = Finite x
+	Infinity >>= f = Infinity
+	Finite v >>= f = f v
+	fail s = Infinity
+
+inf v f Infinity = v
+inf v f (Finite v') = f v'
+swapInfty = inf Infinity Finite
 
 class MixOrd a b where mixCompare :: a -> b -> Ordering
 instance Ord a => MixOrd a a where mixCompare = compare
-instance MixOrd a b => MixOrd (MaxPriority a) (MinPriority b) where
-	mixCompare (MaxPriority Nothing) _ = LT
-	mixCompare _ (MinPriority Nothing) = LT
-	mixCompare (MaxPriority (Just a)) (MinPriority (Just b)) = mixCompare a b
-instance MixOrd b a => MixOrd (MinPriority a) (MaxPriority b) where
+instance MixOrd a b => MixOrd (NegInf a) (PosInf b) where
+	mixCompare Infinity _ = LT
+	mixCompare _ Infinity = LT
+	mixCompare (Finite a) (Finite b) = mixCompare a b
+instance MixOrd b a => MixOrd (PosInf a) (NegInf b) where
 	mixCompare a b = compare EQ (mixCompare b a)
 
 x >.  y = mixCompare x y == GT
@@ -26,4 +38,4 @@ x <=. y = mixCompare x y /= GT
 x ==. y = mixCompare x y == EQ
 
 class Stable f where
-	stable :: (Ord time, Num time) => f time -> MaxPriority time
+	stable :: (Ord time, Num time) => f time -> NegInf time
