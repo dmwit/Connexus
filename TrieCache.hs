@@ -65,7 +65,7 @@ invCompressedNE t = Just t
 invCoherentNE   t = t { cache = mconcat (caches t) }
 
 invCompressedNE' t = invCompressedNE t { children = M.mapMaybe invCompressedNE' (children t) }
-invCoherentNE'   t = invCoherentNE   t { children = fmap       invCoherentNE    (children t) }
+invCoherentNE'   t = invCoherentNE   t { children = fmap       invCoherentNE'   (children t) }
 
 invPossiblyEmpty = (=<<)
 invCompressed    = invPossiblyEmpty invCompressedNE
