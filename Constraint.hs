@@ -42,6 +42,10 @@ point = Set.filter . Set.member
 avoid = Set.filter . notMember
 
 -- rules {{{1
+-- TODO: this type is awful:
+-- 1. why not return Maybe Constraint?
+-- 2. actually, why not just return Constraint, since we throw away the result
+--    of checking whether we should apply first anyway
 data Rule = Rule {
 	offsets   :: [Point],
 	constrain :: [Constraint] -> Constraint -> Maybe (Constraint -> Constraint)
