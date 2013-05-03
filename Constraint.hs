@@ -130,8 +130,7 @@ renderConstraint cs pos@(x, y) = do
 		count = fromIntegral $ Set.size c
 		listc = map Set.toList (Set.toList c)
 	setSourceRGBA 0 0 0 (1 / count)
-	mapM_ (mapM_ (\d -> moveTo x' y' >> lineTo (x' + dx d / 2) (y' + dy d / 2) >> stroke)) listc
-	stroke
+	mapM_ (\ls -> mapM_ (\d -> moveTo x' y' >> lineTo (x' + dx d / 2) (y' + dy d / 2)) ls >> stroke) listc
 	where
 	x' = fromIntegral x
 	y' = fromIntegral y
