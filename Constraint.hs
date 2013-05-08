@@ -7,10 +7,10 @@ import Misc
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Writer
 import Data.Array.IO
 import Data.Function
 import Data.IORef
-import Data.Monoid
 import Data.Set (Set)
 import Data.Universe
 import Graphics.Rendering.Cairo
@@ -45,13 +45,13 @@ point = Set.filter . Set.member
 avoid = Set.filter . notMember
 
 -- rules {{{1
-type Rule = Direction -> Constraint -> Constraint -> (Any, Constraint)
+type Rule = Constraint -> (Direction, Constraint) -> Writer Any Constraint
 
-cohere False cOld cNew = (Any False, cOld)
-cohere True  cOld cNew = (Any True , cNew)
+cohere False cOld cNew = writer (cOld, Any False)
+cohere True  cOld cNew = writer (cNew, Any True )
 
-avoidRule   dir cme cdir = cohere (cdir `can'tPoint` aboutFace dir && cme `mightPoint`    dir) cme (avoid dir cme)
-connectRule dir cme cdir = cohere (cdir `mustPoint`  aboutFace dir && cme `mightNotPoint` dir) cme (point dir cme)
+avoidRule   cme (dir, cdir) = cohere (cdir `can'tPoint` aboutFace dir && cme `mightPoint`    dir) cme (avoid dir cme)
+connectRule cme (dir, cdir) = cohere (cdir `mustPoint`  aboutFace dir && cme `mightNotPoint` dir) cme (point dir cme)
 
 allRules = [avoidRule, connectRule]
 
@@ -70,18 +70,15 @@ getNeighbors (Solver { constraints = cs }) pos = do
 	         , inRange b pos'
 	         ]
 
--- TODO: use Writer
-runRule :: Rule -> Constraint -> [(Direction, Constraint)] -> (Any, Constraint)
-runRule rule cme = foldr (\(dir, cdir) (v, current) -> let (v', next) = rule dir current cdir in (v `mappend` v', next)) (mempty, cme)
-
-runRules :: Constraint -> [(Direction, Constraint)] -> (Any, Constraint)
-runRules cme neighbors = foldr (\rule (v, current) -> let (v', next) = runRule rule current neighbors in (v `mappend` v', next)) (mempty, cme) allRules
+-- TODO: now, can we use the list monad to do the "all rules, all neighbors" thing that's being done here?
+runRules :: Constraint -> [(Direction, Constraint)] -> Writer Any Constraint
+runRules cme neighbors = foldM (\cme rule -> foldM rule cme neighbors) cme allRules
 
 runRulesIO :: Solver -> Point -> IO ()
 runRulesIO solver pos = do
 	neighbors <- getNeighbors solver pos
 	cme       <- readArray (constraints solver) pos
-	let (Any changed, after) = runRules cme (map snd neighbors)
+	let (after, Any changed) = runWriter . runRules cme $ map snd neighbors
 	when changed $ do
 		writeArray (constraints solver) pos after
 		modifyIORef (dirty solver) (Set.union . Set.fromList $ map fst neighbors)
