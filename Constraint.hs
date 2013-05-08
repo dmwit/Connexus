@@ -5,11 +5,14 @@ import Direction
 import Grid ()
 import Misc
 
+import Control.Applicative
 import Control.Monad
 import Data.Array.IO
 import Data.Function
 import Data.IORef
+import Data.Monoid
 import Data.Set (Set)
+import Data.Universe
 import Graphics.Rendering.Cairo
 
 import qualified Data.Set as Set
@@ -42,30 +45,15 @@ point = Set.filter . Set.member
 avoid = Set.filter . notMember
 
 -- rules {{{1
--- TODO: this type is awful:
--- 1. why not return Maybe Constraint?
--- 2. actually, why not just return Constraint, since we throw away the result
---    of checking whether we should apply first anyway
-data Rule = Rule {
-	offsets   :: [Point],
-	constrain :: [Constraint] -> Constraint -> Maybe (Constraint -> Constraint)
-	}
+type Rule = Direction -> Constraint -> Constraint -> (Any, Constraint)
 
-avoidRule dir = Rule {
-	offsets   = [(dx dir, dy dir)],
-	constrain = \[cdir] cme ->
-		guard (cdir `can'tPoint` aboutFace dir && cme `mightPoint` dir) >> return (avoid dir)
-	}
+cohere False cOld cNew = (Any False, cOld)
+cohere True  cOld cNew = (Any True , cNew)
 
-connectRule dir = Rule {
-	offsets     = [(dx dir, dy dir)],
-	constrain   = \[cdir] cme ->
-		guard (cdir `mustPoint` aboutFace dir && cme `mightNotPoint` dir) >> return (point dir)
-	}
+avoidRule   dir cme cdir = cohere (cdir `can'tPoint` aboutFace dir && cme `mightPoint`    dir) cme (avoid dir cme)
+connectRule dir cme cdir = cohere (cdir `mustPoint`  aboutFace dir && cme `mightNotPoint` dir) cme (point dir cme)
 
-allRules =
-	map avoidRule   [minBound..maxBound] ++
-	map connectRule [minBound..maxBound]
+allRules = [avoidRule, connectRule]
 
 -- solver {{{1
 data Solver = Solver {
@@ -73,43 +61,37 @@ data Solver = Solver {
 	dirty       :: IORef (Set Point)
 	}
 
-getOffsets :: Point -> [Point] -> Solver -> IO (Maybe [Point])
-getOffsets (x, y) offsets (Solver { constraints = cs }) = do
+getNeighbors :: Solver -> Point -> IO [(Point, (Direction, Constraint))]
+getNeighbors (Solver { constraints = cs }) pos = do
 	b <- getBounds cs
-	return $ ensure (all (inRange b)) (map (\(dx, dy) -> (x + dx, y + dy)) offsets)
+	sequence [ (\c -> (pos', (dir, c))) <$> readArray cs pos'
+	         | dir <- universe
+	         , let pos' = Direction.step dir pos
+	         , inRange b pos'
+	         ]
 
--- TODO: should be returning points with the *negative* offsets
---       (we're just getting lucky that every rule has a symmetric version with the opposite offset)
--- TODO: there might be something to say for enforcing rotational and reflectional symmetry in the rules, actually
-runRule :: Rule -> Constraint -> Point -> Solver -> IO ([Point], Constraint -> Constraint)
-runRule rule c pos solver = do
-	mNeighbors <- getOffsets pos (offsets rule) solver
-	case mNeighbors of
-		Nothing -> return ([], id)
-		Just pNeighbors -> do
-			cNeighbors <- mapM (readArray (constraints solver)) pNeighbors
-			case constrain rule cNeighbors c of
-				Nothing -> return (pNeighbors, id)
-				Just f  -> return (pNeighbors, f)
+-- TODO: use Writer
+runRule :: Rule -> Constraint -> [(Direction, Constraint)] -> (Any, Constraint)
+runRule rule cme = foldr (\(dir, cdir) (v, current) -> let (v', next) = rule dir current cdir in (v `mappend` v', next)) (mempty, cme)
 
-collapsePoints :: Ord a => [[a]] -> Set a
-collapsePoints = Set.fromList . concat
+runRules :: Constraint -> [(Direction, Constraint)] -> (Any, Constraint)
+runRules cme neighbors = foldr (\rule (v, current) -> let (v', next) = runRule rule current neighbors in (v `mappend` v', next)) (mempty, cme) allRules
 
-runRules :: Constraint -> Point -> Set Point -> Solver -> IO ()
-runRules c pos d solver = do
-	(ds, fs) <- liftM unzip $ mapM (\rule -> runRule rule c pos solver) allRules
-	let c' = foldr ($) c fs
-	writeIORef (dirty solver) $ if c == c'
-		then d
-		else Set.union d . Set.fromList . (pos:) . concat $ ds
-	writeArray (constraints solver) pos c'
+runRulesIO :: Solver -> Point -> IO ()
+runRulesIO solver pos = do
+	neighbors <- getNeighbors solver pos
+	cme       <- readArray (constraints solver) pos
+	let (Any changed, after) = runRules cme (map snd neighbors)
+	when changed $ do
+		writeArray (constraints solver) pos after
+		modifyIORef (dirty solver) (Set.union . Set.fromList $ map fst neighbors)
 
 step :: Solver -> IO ()
 step solver@(Solver { constraints = cs, dirty = dref }) = do
 	d <- readIORef dref
 	case Set.minView d of
 		Nothing       -> return ()
-		Just (pos, d) -> readArray cs pos >>= \c -> runRules c pos d solver
+		Just (pos, d) -> writeIORef dref d >> runRulesIO solver pos
 
 -- rendering {{{1
 update :: Solver -> Render ()

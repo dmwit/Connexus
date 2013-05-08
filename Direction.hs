@@ -1,8 +1,11 @@
 module Direction where
 
 import Data.Ix
+import Data.Universe
 
 data Direction = North | East | South | West deriving (Eq, Ord, Show, Read, Bounded, Enum, Ix)
+instance Universe Direction
+instance Finite   Direction
 
 dx North =  0
 dx East  =  1
