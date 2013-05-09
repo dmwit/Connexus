@@ -53,7 +53,7 @@ cohere True  cOld cNew = writer (cNew, Any True )
 avoidRule   cme (dir, cdir) = cohere (cdir `can'tPoint` aboutFace dir && cme `mightPoint`    dir) cme (avoid dir cme)
 connectRule cme (dir, cdir) = cohere (cdir `mustPoint`  aboutFace dir && cme `mightNotPoint` dir) cme (point dir cme)
 
-allRules = [avoidRule, connectRule]
+bothRules cme cdir = ((`avoidRule` cdir) >=> (`connectRule` cdir)) cme
 
 -- solver {{{1
 data Solver = Solver {
@@ -70,15 +70,11 @@ getNeighbors (Solver { constraints = cs }) pos = do
 	         , inRange b pos'
 	         ]
 
--- TODO: now, can we use the list monad to do the "all rules, all neighbors" thing that's being done here?
-runRules :: Constraint -> [(Direction, Constraint)] -> Writer Any Constraint
-runRules cme neighbors = foldM (\cme rule -> foldM rule cme neighbors) cme allRules
-
 runRulesIO :: Solver -> Point -> IO ()
 runRulesIO solver pos = do
 	neighbors <- getNeighbors solver pos
 	cme       <- readArray (constraints solver) pos
-	let (after, Any changed) = runWriter . runRules cme $ map snd neighbors
+	let (after, Any changed) = runWriter . foldM bothRules cme $ map snd neighbors
 	when changed $ do
 		writeArray (constraints solver) pos after
 		modifyIORef (dirty solver) (Set.union . Set.fromList $ map fst neighbors)
