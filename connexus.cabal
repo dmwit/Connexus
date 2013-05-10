@@ -24,7 +24,8 @@ Executable connexus
         mtl >= 1.1,
         random >= 1.0,
         time >= 1.1,
-        tuple >= 0.2
+        tuple >= 0.2,
+        universe >= 0.3
 
 Executable constraint
     Main-is: ConstraintGUI.hs
