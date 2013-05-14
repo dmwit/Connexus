@@ -9,13 +9,34 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Writer
 import Data.Array.IO
+import Data.Default
 import Data.Function
-import Data.IORef
 import Data.Set (Set)
+import Data.IORef
 import Data.Universe
 import Graphics.Rendering.Cairo
 
 import qualified Data.Set as Set
+
+-- queue {{{1
+data Queue a = Queue
+	{ front    :: [a]
+	, back     :: [a]
+	, elements :: Set a
+	} deriving (Eq, Ord, Show, Read)
+instance Default (Queue a) where def = Queue def def def
+
+push e q
+	| Set.member e (elements q) = q
+	| otherwise = q { back = e:back q, elements = Set.insert e (elements q) }
+
+pop q@(Queue { front = e:front', elements = es }) = Just (e, q { front = front', elements = Set.delete e es })
+pop q@(Queue { front = [], back = [] }) = Nothing
+pop q@(Queue { front = [] }) = pop q { front = reverse (back q), back = [] }
+
+fromList = foldr push def
+toList q = front q ++ back q
+union q q' = foldr push q' (back q ++ reverse (front q))
 
 -- constraint properties {{{1
 type Constraint = Set (Set Direction)
@@ -58,7 +79,7 @@ bothRules cme cdir = ((`avoidRule` cdir) >=> (`connectRule` cdir)) cme
 -- solver {{{1
 data Solver = Solver {
 	constraints :: IOArray Point Constraint,
-	dirty       :: IORef (Set Point)
+	dirty       :: IORef (Queue Point)
 	}
 
 getNeighbors :: Solver -> Point -> IO [(Point, (Direction, Constraint))]
@@ -77,12 +98,12 @@ runRulesIO solver pos = do
 	let (after, Any changed) = runWriter . foldM bothRules cme $ map snd neighbors
 	when changed $ do
 		writeArray (constraints solver) pos after
-		modifyIORef (dirty solver) (Set.union . Set.fromList $ map fst neighbors)
+		modifyIORef (dirty solver) (union . fromList $ map fst neighbors)
 
 step :: Solver -> IO ()
 step solver@(Solver { constraints = cs, dirty = dref }) = do
 	d <- readIORef dref
-	case Set.minView d of
+	case pop d of
 		Nothing       -> return ()
 		Just (pos, d) -> writeIORef dref d >> runRulesIO solver pos
 
@@ -113,17 +134,26 @@ renderConstraint cs pos@(x, y) = do
 renderDirty poss = do
 	setLineWidth 0
 	setSourceRGB 0.8 0 0
-	mapM_ circle (Set.toList poss)
+	mapM_ circle (toList poss)
 	fill
 	where
 	circle' x y = moveTo (x + 0.1) (y + 0.1) >> arc x y 0.1 0 (2 * pi)
 	circle = uncurry (circle' `on` fromIntegral)
 
 -- creating {{{1
+-- like range, but spiral inwards
+range' ((xlo, ylo), (xhi, yhi))
+	| xlo > xhi || ylo > yhi = []
+	| otherwise =  [(x, ylo) | x <- [xlo .. xhi]]
+	            ++ [(x, yhi) | x <- [xlo .. xhi]]
+	            ++ [(xlo, y) | y <- [ylo+1 .. yhi-1]]
+	            ++ [(xhi, y) | y <- [ylo+1 .. yhi-1]]
+	            ++ range' ((xlo+1,ylo+1),(xhi-1,yhi-1))
+
 solverFromGrid :: IOArray Point (Set Direction) -> IO Solver
 solverFromGrid nodeShape = do
 	b@((xlo, ylo), (xhi, yhi)) <- getBounds nodeShape
-	dref <- newIORef (Set.fromList (range b))
+	dref <- newIORef (fromList (reverse (range' b)))
 	cs   <- newArray ((xlo-1, ylo-1), (xhi+1, yhi+1)) (Set.singleton Set.empty)
 	forM_ (range b) $ \pos -> do
 		connections <- readArray nodeShape pos
