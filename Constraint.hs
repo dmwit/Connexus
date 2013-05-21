@@ -12,6 +12,7 @@ import Data.Array.IO
 import Data.Default
 import Data.Function
 import Data.Set (Set)
+import Data.Graph.Inductive
 import Data.IORef
 import Data.Universe
 import Graphics.Rendering.Cairo
@@ -106,6 +107,22 @@ step solver@(Solver { constraints = cs, dirty = dref }) = do
 	case pop d of
 		Nothing       -> return ()
 		Just (pos, d) -> writeIORef dref d >> runRulesIO solver pos
+
+-- conversion to a graph {{{2
+graphPure :: Graph g => [(Point, Constraint)] -> g Point ()
+graphPure assocs = mkGraph labeledPoints edges where
+	labeledAssocs = zipWith (\i (p, c) -> (i, p, c)) universe assocs
+	labeledPoints = zipWith (\i (p, c) -> (i, p   )) universe assocs
+	label p = [i | (i, p') <- labeledPoints, p == p']
+	edges   = [ (i, i', ())
+	          | (i, p, c) <- labeledAssocs
+	          , dir       <- universe
+	          , c `mustPoint` dir
+	          , i'        <- label (Direction.step dir p)
+	          ]
+
+graph :: Graph g => Solver -> IO (g Point ())
+graph (Solver { constraints = cs }) = graphPure <$> getAssocs cs
 
 -- rendering {{{1
 update :: Solver -> Render ()
