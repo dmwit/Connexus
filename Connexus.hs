@@ -31,8 +31,8 @@ drawGridLock grid lockRef = do
 main = do
 	args    <- initGUI
 	let (w, h) = case map reads args of
-		[[(w, "")], [(h, "")]] -> (w, h)
-		_ -> (11, 11)
+	    	[[(w, "")], [(h, "")]] -> (w, h)
+	    	_ -> (11, 11)
 	window  <- windowNew
 	grid    <- randomGrid w h
 	rotateGridRandomly grid
