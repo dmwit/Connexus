@@ -19,7 +19,7 @@ import Control.Monad
 import Control.Monad.Trans
 import Data.Default
 import Data.IORef
-import Graphics.Rendering.Cairo
+import Graphics.Rendering.Cairo hiding (width, height)
 import Graphics.UI.Gtk hiding (Rectangle(..), Region(..), Screen(..), Viewport, viewportNew)
 import qualified Graphics.UI.Gtk as Gtk (Rectangle(..), Region(..))
 

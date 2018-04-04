@@ -8,9 +8,10 @@ module Bounds (
 
 import Data.Monoid.Inf hiding (minimum, maximum)
 
-instance Functor (Inf p) where
-	fmap f Infinity = Infinity
-	fmap f (Finite v) = Finite (f v)
+instance Applicative (Inf p) where
+	pure = Finite
+	Finite f <*> Finite x = Finite (f x)
+	_ <*> _ = Infinity
 
 instance Monad (Inf p) where
 	return x = Finite x

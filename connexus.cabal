@@ -26,6 +26,20 @@ Executable connexus
         time >= 1.1,
         tuple >= 0.2,
         universe >= 0.3
+    Other-Modules:
+        Bounds
+        Direction
+        Graph
+        Grid
+        Interval
+        Life
+        Lock
+        Misc
+        Rectangle
+        Rounding
+        TrieCache
+        Viewport
+    Ghc-Options: -fno-warn-tabs
 
 Executable constraint
     Main-is: ConstraintGUI.hs
@@ -35,9 +49,24 @@ Executable constraint
         cairo >= 0.10,
         containers >= 0.2,
         data-default >= 0.2,
+        fgl >= 5.6,
         gtk >= 0.10,
         MonadRandom >= 0.1,
         mtl >= 1.1,
         random >= 1.0,
         time >= 1.1,
         universe >= 0.3
+    Other-Modules:
+        Bounds
+        Constraint
+        Direction
+        Graph
+        Grid
+        Interval
+        Life
+        Misc
+        Rectangle
+        Rounding
+        TrieCache
+        Viewport
+    Ghc-Options: -fno-warn-tabs

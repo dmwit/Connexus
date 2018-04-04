@@ -1,4 +1,5 @@
 -- boilerplate {{{1
+{-# LANGUAGE FlexibleContexts #-}
 module Constraint where
 
 import Direction

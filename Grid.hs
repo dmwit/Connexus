@@ -1,5 +1,6 @@
 -- boilerplate {{{1
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Grid (
 	Grid(..), randomGrid, staticGrid, update, rotateGridRandomly, signal, rotate, stable
 	) where
@@ -20,7 +21,7 @@ import Data.IORef
 import Data.List hiding (intersect, union)
 import Data.Maybe
 import Data.Set (Set)
-import Graphics.Rendering.Cairo hiding (rotate)
+import Graphics.Rendering.Cairo hiding (rotate, x, y)
 
 import qualified Data.Set as S
 
@@ -81,8 +82,6 @@ staticGrid pds = do
 	grid array
 	where
 	[minX, minY, maxX, maxY] = [f (map (g . fst) pds) | f <- [minimum, maximum], g <- [fst, snd]]
-
-uniform = fromList . flip zip (repeat 1)
 
 randomGrid w h = do
 	array  <- newArray bounds def

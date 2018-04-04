@@ -1,4 +1,5 @@
 -- boilerplate {{{1
+{-# LANGUAGE MonoLocalBinds #-}
 import Bounds
 import Direction
 import Grid
@@ -8,6 +9,7 @@ import Viewport
 
 import Control.Monad
 import Control.Monad.Reader
+import Data.Set (Set)
 import Data.Default
 import Data.IORef
 import Graphics.UI.Gtk hiding (Viewport, viewportNew)
